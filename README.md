@@ -70,26 +70,6 @@
 
 SplaTAM has been benchmarked with Python 3.10, Torch 1.12.1 & CUDA=11.6. However, Torch 1.12 is not a hard requirement and the code has also been tested with other versions of Torch and CUDA such as Torch 2.3.0 & CUDA 12.1.
 
-The simplest way to install all dependences is to use [anaconda](https://www.anaconda.com/) and [pip](https://pypi.org/project/pip/) in the following steps:
-
-```bash
-conda create -n splatam python=3.10
-conda activate splatam
-conda install -c "nvidia/label/cuda-11.6.0" cuda-toolkit
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
-pip install -r requirements.txt
-```
-
-<!-- Alternatively, we also provide a conda environment.yml file :
-```bash
-conda env create -f environment.yml
-conda activate splatam
-``` -->
-
-#### Windows
-
-For installation on Windows using Git bash, please refer to the [instructions shared in Issue#9](https://github.com/spla-tam/SplaTAM/issues/9#issuecomment-1848348403).
-
 #### `uv` Setup
 
 Create a virtual environment using `uv` by running:
