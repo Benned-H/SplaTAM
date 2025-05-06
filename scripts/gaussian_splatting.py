@@ -1,8 +1,8 @@
 import argparse
 import os
 import random
-import sys
 import shutil
+import sys
 from importlib.machinery import SourceFileLoader
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,71 +16,69 @@ for p in sys.path:
 import cv2
 import numpy as np
 import torch
-from tqdm import tqdm
 import wandb
+from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from tqdm import tqdm
 
 from datasets.gradslam_datasets import (
-    load_dataset_config,
+    Ai2thorDataset,
+    AzureKinectDataset,
     ICLDataset,
+    NeRFCaptureDataset,
+    RealsenseDataset,
+    Record3DDataset,
     ReplicaDataset,
     ReplicaV2Dataset,
-    AzureKinectDataset,
     ScannetDataset,
-    Ai2thorDataset,
-    Record3DDataset,
-    RealsenseDataset,
-    TUMDataset,
     ScannetPPDataset,
-    NeRFCaptureDataset,
+    TUMDataset,
+    load_dataset_config,
 )
-from utils.common_utils import seed_everything, save_params
-from utils.recon_helpers import setup_camera
-from utils.gs_helpers import (
-    params2rendervar,
-    params2depthplussilhouette,
-    transformed_params2depthplussilhouette,
-    transform_to_frame,
-    report_progress,
-    eval,
-    l1_loss_v1,
-    matrix_to_quaternion,
-)
+from utils.common_utils import save_params, seed_everything
 from utils.gs_external import (
-    calc_ssim,
     build_rotation,
+    calc_ssim,
     densify,
     get_expon_lr_func,
     update_learning_rate,
 )
-
-from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from utils.gs_helpers import (
+    eval,
+    l1_loss_v1,
+    matrix_to_quaternion,
+    params2depthplussilhouette,
+    params2rendervar,
+    report_progress,
+    transform_to_frame,
+    transformed_params2depthplussilhouette,
+)
+from utils.recon_helpers import setup_camera
 
 
 def get_dataset(config_dict, basedir, sequence, **kwargs):
     if config_dict["dataset_name"].lower() in ["icl"]:
         return ICLDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replica"]:
+    if config_dict["dataset_name"].lower() in ["replica"]:
         return ReplicaDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replicav2"]:
+    if config_dict["dataset_name"].lower() in ["replicav2"]:
         return ReplicaV2Dataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
+    if config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
         return AzureKinectDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannet"]:
+    if config_dict["dataset_name"].lower() in ["scannet"]:
         return ScannetDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["ai2thor"]:
+    if config_dict["dataset_name"].lower() in ["ai2thor"]:
         return Ai2thorDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["record3d"]:
+    if config_dict["dataset_name"].lower() in ["record3d"]:
         return Record3DDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["realsense"]:
+    if config_dict["dataset_name"].lower() in ["realsense"]:
         return RealsenseDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["tum"]:
+    if config_dict["dataset_name"].lower() in ["tum"]:
         return TUMDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannetpp"]:
+    if config_dict["dataset_name"].lower() in ["scannetpp"]:
         return ScannetPPDataset(basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["nerfcapture"]:
+    if config_dict["dataset_name"].lower() in ["nerfcapture"]:
         return NeRFCaptureDataset(basedir, sequence, **kwargs)
-    else:
-        raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
+    raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
 
 
 def get_pointcloud(
@@ -101,7 +99,9 @@ def get_pointcloud(
 
     # Compute indices of pixels
     x_grid, y_grid = torch.meshgrid(
-        torch.arange(width).cuda().float(), torch.arange(height).cuda().float(), indexing="xy"
+        torch.arange(width).cuda().float(),
+        torch.arange(height).cuda().float(),
+        indexing="xy",
     )
     xx = (x_grid - CX) / FX
     yy = (y_grid - CY) / FY
@@ -140,8 +140,7 @@ def get_pointcloud(
 
     if compute_mean_sq_dist:
         return point_cld, mean3_sq_dist
-    else:
-        return point_cld
+    return point_cld
 
 
 def initialize_params(init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribution):
@@ -173,7 +172,7 @@ def initialize_params(init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribut
         # Check if value is already a torch tensor
         if not isinstance(v, torch.Tensor):
             params[k] = torch.nn.Parameter(
-                torch.tensor(v).cuda().float().contiguous().requires_grad_(True)
+                torch.tensor(v).cuda().float().contiguous().requires_grad_(True),
             )
         else:
             params[k] = torch.nn.Parameter(v.cuda().float().contiguous().requires_grad_(True))
@@ -195,7 +194,11 @@ def initialize_optimizer(params, lrs_dict):
 
 
 def initialize_first_timestep(
-    dataset, num_frames, lrs_dict, mean_sq_dist_method, gaussian_distribution
+    dataset,
+    num_frames,
+    lrs_dict,
+    mean_sq_dist_method,
+    gaussian_distribution,
 ):
     # Get RGB-D Data & Camera Parameters
     color, depth, intrinsics, pose = dataset[0]
@@ -210,7 +213,10 @@ def initialize_first_timestep(
 
     # Setup Camera
     cam = setup_camera(
-        color.shape[2], color.shape[1], intrinsics.cpu().numpy(), w2c.detach().cpu().numpy()
+        color.shape[2],
+        color.shape[1],
+        intrinsics.cpu().numpy(),
+        w2c.detach().cpu().numpy(),
     )
 
     # Get Initial Point Cloud (PyTorch CUDA Tensor)
@@ -228,7 +234,10 @@ def initialize_first_timestep(
 
     # Initialize Parameters & Optimizer
     params, variables = initialize_params(
-        init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribution
+        init_pt_cld,
+        num_frames,
+        mean3_sq_dist,
+        gaussian_distribution,
     )
     optimizer = initialize_optimizer(params, lrs_dict)
 
@@ -311,7 +320,7 @@ def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution):
         # Check if value is already a torch tensor
         if not isinstance(v, torch.Tensor):
             params[k] = torch.nn.Parameter(
-                torch.tensor(v).cuda().float().contiguous().requires_grad_(True)
+                torch.tensor(v).cuda().float().contiguous().requires_grad_(True),
             )
         else:
             params[k] = torch.nn.Parameter(v.cuda().float().contiguous().requires_grad_(True))
@@ -319,14 +328,25 @@ def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution):
 
 
 def add_new_gaussians(
-    params, variables, curr_data, sil_thres, time_idx, mean_sq_dist_method, gaussian_distribution
+    params,
+    variables,
+    curr_data,
+    sil_thres,
+    time_idx,
+    mean_sq_dist_method,
+    gaussian_distribution,
 ):
     # Silhouette Rendering
     transformed_gaussians = transform_to_frame(
-        params, time_idx, gaussians_grad=False, camera_grad=False
+        params,
+        time_idx,
+        gaussians_grad=False,
+        camera_grad=False,
     )
     depth_sil_rendervar = transformed_params2depthplussilhouette(
-        params, curr_data["w2c"], transformed_gaussians
+        params,
+        curr_data["w2c"],
+        transformed_gaussians,
     )
     (
         depth_sil,
@@ -349,7 +369,7 @@ def add_new_gaussians(
     if torch.sum(non_presence_mask) > 0:
         # Get the new pointcloud in the world frame
         curr_cam_rot = torch.nn.functional.normalize(
-            params["cam_unnorm_rots"][..., time_idx].detach()
+            params["cam_unnorm_rots"][..., time_idx].detach(),
         )
         curr_cam_tran = params["cam_trans"][..., time_idx].detach()
         curr_w2c = torch.eye(4).cuda().float()
@@ -504,7 +524,10 @@ def offline_splatting(config: dict):
         gt_w2c_all_frames.append(gt_w2c)
         # Setup Gaussian Splatting Camera
         gs_cam = setup_camera(
-            color.shape[2], color.shape[1], intrinsics.cpu().numpy(), gt_w2c.detach().cpu().numpy()
+            color.shape[2],
+            color.shape[1],
+            intrinsics.cpu().numpy(),
+            gt_w2c.detach().cpu().numpy(),
         )
         gs_cams_all_frames.append(gs_cam)
 
@@ -614,7 +637,10 @@ def offline_splatting(config: dict):
                 }
                 # Loss for current frame
                 loss, variables, losses = get_loss_gs(
-                    params, iter_data, variables, config["train"]["loss_weights"]
+                    params,
+                    iter_data,
+                    variables,
+                    config["train"]["loss_weights"],
                 )
                 # Backprop
                 loss.backward()
@@ -622,11 +648,15 @@ def offline_splatting(config: dict):
                     # Gaussian-Splatting's Gradient-based Densification
                     if config["train"]["use_gaussian_splatting_densification"]:
                         params, variables = densify(
-                            params, variables, optimizer, iter, config["train"]["densify_dict"]
+                            params,
+                            variables,
+                            optimizer,
+                            iter,
+                            config["train"]["densify_dict"],
                         )
                         if config["use_wandb"]:
                             wandb_run.log(
-                                {"Number of Gaussians - Densification": params["means3D"].shape[0]}
+                                {"Number of Gaussians - Densification": params["means3D"].shape[0]},
                             )
                     # Optimizer Update
                     optimizer.step()

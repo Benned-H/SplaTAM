@@ -1,8 +1,8 @@
 import argparse
 import os
 import random
-import sys
 import shutil
+import sys
 from importlib.machinery import SourceFileLoader
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,68 +16,66 @@ for p in sys.path:
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
 import wandb
+from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from tqdm import tqdm
 
 from datasets.gradslam_datasets import (
-    load_dataset_config,
+    Ai2thorDataset,
+    AzureKinectDataset,
     ICLDataset,
+    NeRFCaptureDataset,
+    RealsenseDataset,
+    Record3DDataset,
     ReplicaDataset,
     ReplicaV2Dataset,
-    AzureKinectDataset,
     ScannetDataset,
-    Ai2thorDataset,
-    Record3DDataset,
-    RealsenseDataset,
-    TUMDataset,
     ScannetPPDataset,
-    NeRFCaptureDataset,
+    TUMDataset,
+    load_dataset_config,
 )
-from utils.common_utils import seed_everything, save_params
-from utils.recon_helpers import setup_camera
-from utils.gs_helpers import (
-    params2rendervar,
-    params2depthplussilhouette,
-    report_progress,
-    eval,
-    l1_loss_v1,
-)
+from utils.common_utils import save_params, seed_everything
 from utils.gs_external import (
+    build_rotation,
     calc_ssim,
     densify,
     get_expon_lr_func,
     update_learning_rate,
-    build_rotation,
 )
-
-from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from utils.gs_helpers import (
+    eval,
+    l1_loss_v1,
+    params2depthplussilhouette,
+    params2rendervar,
+    report_progress,
+)
+from utils.recon_helpers import setup_camera
 
 
 def get_dataset(config_dict, basedir, sequence, **kwargs):
     if config_dict["dataset_name"].lower() in ["icl"]:
         return ICLDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replica"]:
+    if config_dict["dataset_name"].lower() in ["replica"]:
         return ReplicaDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replicav2"]:
+    if config_dict["dataset_name"].lower() in ["replicav2"]:
         return ReplicaV2Dataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
+    if config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
         return AzureKinectDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannet"]:
+    if config_dict["dataset_name"].lower() in ["scannet"]:
         return ScannetDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["ai2thor"]:
+    if config_dict["dataset_name"].lower() in ["ai2thor"]:
         return Ai2thorDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["record3d"]:
+    if config_dict["dataset_name"].lower() in ["record3d"]:
         return Record3DDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["realsense"]:
+    if config_dict["dataset_name"].lower() in ["realsense"]:
         return RealsenseDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["tum"]:
+    if config_dict["dataset_name"].lower() in ["tum"]:
         return TUMDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannetpp"]:
+    if config_dict["dataset_name"].lower() in ["scannetpp"]:
         return ScannetPPDataset(basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["nerfcapture"]:
+    if config_dict["dataset_name"].lower() in ["nerfcapture"]:
         return NeRFCaptureDataset(basedir, sequence, **kwargs)
-    else:
-        raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
+    raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
 
 
 def initialize_optimizer(params, lrs_dict):
@@ -88,7 +86,11 @@ def initialize_optimizer(params, lrs_dict):
 
 
 def initialize_first_timestep_from_ckpt(
-    ckpt_path, dataset, num_frames, lrs_dict, mean_sq_dist_method
+    ckpt_path,
+    dataset,
+    num_frames,
+    lrs_dict,
+    mean_sq_dist_method,
 ):
     # Get RGB-D Data & Camera Parameters
     color, depth, intrinsics, pose = dataset[0]
@@ -103,7 +105,10 @@ def initialize_first_timestep_from_ckpt(
 
     # Setup Camera
     cam = setup_camera(
-        color.shape[2], color.shape[1], intrinsics.cpu().numpy(), w2c.detach().cpu().numpy()
+        color.shape[2],
+        color.shape[1],
+        intrinsics.cpu().numpy(),
+        w2c.detach().cpu().numpy(),
     )
 
     # Get Initial Point Cloud (PyTorch CUDA Tensor)
@@ -126,7 +131,7 @@ def initialize_first_timestep_from_ckpt(
     ]:
         params.pop(k)
 
-    params = {k: torch.tensor(params[k]).cuda().float().requires_grad_(True) for k in params.keys()}
+    params = {k: torch.tensor(params[k]).cuda().float().requires_grad_(True) for k in params}
     variables["max_2D_radius"] = torch.zeros(params["means3D"].shape[0]).cuda().float()
     variables["means2D_gradient_accum"] = torch.zeros(params["means3D"].shape[0]).cuda().float()
     variables["denom"] = torch.zeros(params["means3D"].shape[0]).cuda().float()
@@ -374,7 +379,10 @@ def rgbd_slam(config: dict):
                 }
                 # Loss for current frame
                 loss, variables, losses = get_loss_gs(
-                    params, iter_data, variables, config["train"]["loss_weights"]
+                    params,
+                    iter_data,
+                    variables,
+                    config["train"]["loss_weights"],
                 )
                 # Backprop
                 loss.backward()
@@ -382,11 +390,15 @@ def rgbd_slam(config: dict):
                     # Gaussian-Splatting's Gradient-based Densification
                     if config["train"]["use_gaussian_splatting_densification"]:
                         params, variables = densify(
-                            params, variables, optimizer, iter, config["train"]["densify_dict"]
+                            params,
+                            variables,
+                            optimizer,
+                            iter,
+                            config["train"]["densify_dict"],
                         )
                         if config["use_wandb"]:
                             wandb_run.log(
-                                {"Number of Gaussians - Densification": params["means3D"].shape[0]}
+                                {"Number of Gaussians - Densification": params["means3D"].shape[0]},
                             )
                     # Optimizer Update
                     optimizer.step()

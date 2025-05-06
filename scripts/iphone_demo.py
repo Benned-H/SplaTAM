@@ -1,63 +1,64 @@
-"""
-Script to stream RGB-D data from the NeRFCapture iOS App & build a Gaussian Splat on the fly using SplaTAM.
+"""Script to stream RGB-D data from the NeRFCapture iOS App & build a Gaussian Splat on the fly using SplaTAM.
 The CycloneDDS parts of this script are adapted from the Instant-NGP Repo:
 https://github.com/NVlabs/instant-ngp/blob/master/scripts/nerfcapture2nerf.py
 """
 #!/usr/bin/env python3
 
 import argparse
+import json
 import os
 import shutil
 import sys
 import time
-from pathlib import Path
-import json
 from importlib.machinery import SourceFileLoader
+from pathlib import Path
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, _BASE_DIR)
 
+from dataclasses import dataclass
+
 import cv2
+import cyclonedds.idl.annotations as annotate
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
-
-from datasets.gradslam_datasets.geometryutils import relative_transformation
-from utils.common_utils import seed_everything, save_params_ckpt, save_params
-from utils.eval_helpers import report_progress
-from utils.keyframe_selection import keyframe_selection_overlap
-from utils.recon_helpers import setup_camera
-from utils.slam_external import build_rotation, prune_gaussians, densify
-from utils.slam_helpers import matrix_to_quaternion
-from scripts.splatam import (
-    get_loss,
-    initialize_optimizer,
-    initialize_params,
-    initialize_camera_pose,
-    get_pointcloud,
-    add_new_gaussians,
-)
-
-from diff_gaussian_rasterization import GaussianRasterizer as Renderer
-
-import cyclonedds.idl as idl
-import cyclonedds.idl.annotations as annotate
-import cyclonedds.idl.types as types
-from dataclasses import dataclass
-from cyclonedds.domain import DomainParticipant, Domain
-from cyclonedds.core import Qos, Policy
+from cyclonedds import idl
+from cyclonedds.core import Policy, Qos
+from cyclonedds.domain import Domain, DomainParticipant
+from cyclonedds.idl import types
 from cyclonedds.sub import DataReader
 from cyclonedds.topic import Topic
 from cyclonedds.util import duration
+from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from tqdm import tqdm
+
+from datasets.gradslam_datasets.geometryutils import relative_transformation
+from scripts.splatam import (
+    add_new_gaussians,
+    get_loss,
+    get_pointcloud,
+    initialize_camera_pose,
+    initialize_optimizer,
+    initialize_params,
+)
+from utils.common_utils import save_params, save_params_ckpt, seed_everything
+from utils.eval_helpers import report_progress
+from utils.keyframe_selection import keyframe_selection_overlap
+from utils.recon_helpers import setup_camera
+from utils.slam_external import build_rotation, densify, prune_gaussians
+from utils.slam_helpers import matrix_to_quaternion
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", default="./configs/iphone/online_demo.py", type=str, help="Path to config file."
+        "--config",
+        default="./configs/iphone/online_demo.py",
+        type=str,
+        help="Path to config file.",
     )
     return parser.parse_args()
 
@@ -124,7 +125,7 @@ def dataset_capture_loop(
             shutil.rmtree(save_path)
         else:
             print(
-                f"rgb_path {rgb_path} already exists. Please use overwrite=True in config if you want to overwrite."
+                f"rgb_path {rgb_path} already exists. Please use overwrite=True in config if you want to overwrite.",
             )
             sys.exit(1)
 
@@ -176,7 +177,7 @@ def dataset_capture_loop(
 
             # RGB
             image = np.asarray(sample.image, dtype=np.uint8).reshape(
-                (sample.height, sample.width, 3)
+                (sample.height, sample.width, 3),
             )
             cv2.imwrite(
                 str(images_dir.joinpath(f"{total_frames}.png")),
@@ -194,7 +195,9 @@ def dataset_capture_loop(
                 )
                 save_depth = (save_depth * 65535 / float(depth_scale)).astype(np.uint16)
                 save_depth = cv2.resize(
-                    save_depth, dsize=(sample.width, sample.height), interpolation=cv2.INTER_NEAREST
+                    save_depth,
+                    dsize=(sample.width, sample.height),
+                    interpolation=cv2.INTER_NEAREST,
                 )
                 cv2.imwrite(str(depth_dir.joinpath(f"{total_frames}.png")), save_depth)
                 # Load Depth Image for SplaTAM
@@ -206,7 +209,7 @@ def dataset_capture_loop(
             else:
                 print(
                     "No Depth Image Received. Please make sure that the NeRFCapture App \
-                      mentions Depth Supported on the top right corner. Skipping Frame..."
+                      mentions Depth Supported on the top right corner. Skipping Frame...",
                 )
                 continue
 
@@ -232,7 +235,9 @@ def dataset_capture_loop(
             if time_idx == 0:
                 first_abs_gt_pose = gt_pose
             gt_pose = relative_transformation(
-                first_abs_gt_pose.unsqueeze(0), gt_pose.unsqueeze(0), orthogonal_rotations=False
+                first_abs_gt_pose.unsqueeze(0),
+                gt_pose.unsqueeze(0),
+                orthogonal_rotations=False,
             )
             gt_w2c = torch.linalg.inv(gt_pose[0])
             gt_w2c_all_frames.append(gt_w2c)
@@ -262,7 +267,7 @@ def dataset_capture_loop(
             if time_idx == 0:
                 intrinsics = (
                     torch.tensor(
-                        [[sample.fl_x, 0, sample.cx], [0, sample.fl_y, sample.cy], [0, 0, 1]]
+                        [[sample.fl_x, 0, sample.cx], [0, sample.fl_y, sample.cy], [0, 0, 1]],
                     )
                     .cuda()
                     .float()
@@ -302,7 +307,7 @@ def dataset_capture_loop(
             if time_idx == 0:
                 densify_intrinsics = (
                     torch.tensor(
-                        [[sample.fl_x, 0, sample.cx], [0, sample.fl_y, sample.cy], [0, 0, 1]]
+                        [[sample.fl_x, 0, sample.cx], [0, sample.fl_y, sample.cy], [0, 0, 1]],
                     )
                     .cuda()
                     .float()
@@ -331,7 +336,10 @@ def dataset_capture_loop(
                     mean_sq_dist_method=config["mean_sq_dist_method"],
                 )
                 params, variables = initialize_params(
-                    init_pt_cld, num_frames, mean3_sq_dist, config["gaussian_distribution"]
+                    init_pt_cld,
+                    num_frames,
+                    mean3_sq_dist,
+                    config["gaussian_distribution"],
                 )
                 variables["scene_radius"] = (
                     torch.max(densify_depth) / config["scene_radius_depth_ratio"]
@@ -357,7 +365,9 @@ def dataset_capture_loop(
             # Initialize the camera pose for the current frame
             if time_idx > 0:
                 params = initialize_camera_pose(
-                    params, time_idx, forward_prop=config["tracking"]["forward_prop"]
+                    params,
+                    time_idx,
+                    forward_prop=config["tracking"]["forward_prop"],
                 )
 
             # Tracking
@@ -368,13 +378,14 @@ def dataset_capture_loop(
                 # Keep Track of Best Candidate Rotation & Translation
                 candidate_cam_unnorm_rot = params["cam_unnorm_rots"][..., time_idx].detach().clone()
                 candidate_cam_tran = params["cam_trans"][..., time_idx].detach().clone()
-                current_min_loss = float(1e20)
+                current_min_loss = 1e20
                 # Tracking Optimization
                 iter = 0
                 do_continue_slam = False
                 num_iters_tracking = config["tracking"]["num_iters"]
                 progress_bar = tqdm(
-                    range(num_iters_tracking), desc=f"Tracking Time Step: {time_idx}"
+                    range(num_iters_tracking),
+                    desc=f"Tracking Time Step: {time_idx}",
                 )
                 while True:
                     iter_start_time = time.time()
@@ -431,10 +442,11 @@ def dataset_capture_loop(
                             and config["tracking"]["use_depth_loss_thres"]
                         ):
                             break
-                        elif config["tracking"]["use_depth_loss_thres"] and not do_continue_slam:
+                        if config["tracking"]["use_depth_loss_thres"] and not do_continue_slam:
                             do_continue_slam = True
                             progress_bar = tqdm(
-                                range(num_iters_tracking), desc=f"Tracking Time Step: {time_idx}"
+                                range(num_iters_tracking),
+                                desc=f"Tracking Time Step: {time_idx}",
                             )
                             num_iters_tracking = 2 * num_iters_tracking
                         else:
@@ -516,7 +528,11 @@ def dataset_capture_loop(
                     # Select Keyframes for Mapping
                     num_keyframes = config["mapping_window_size"] - 2
                     selected_keyframes = keyframe_selection_overlap(
-                        depth, curr_w2c, intrinsics, keyframe_list[:-1], num_keyframes
+                        depth,
+                        curr_w2c,
+                        intrinsics,
+                        keyframe_list[:-1],
+                        num_keyframes,
                     )
                     selected_time_idx = [
                         keyframe_list[frame_idx]["id"] for frame_idx in selected_keyframes
@@ -538,7 +554,8 @@ def dataset_capture_loop(
                 mapping_start_time = time.time()
                 if num_iters_mapping > 0:
                     progress_bar = tqdm(
-                        range(num_iters_mapping), desc=f"Mapping Time Step: {time_idx}"
+                        range(num_iters_mapping),
+                        desc=f"Mapping Time Step: {time_idx}",
                     )
                 for iter in range(num_iters_mapping):
                     iter_start_time = time.time()

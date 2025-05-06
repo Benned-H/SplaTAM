@@ -1,8 +1,8 @@
 import argparse
 import os
 import random
-import sys
 import shutil
+import sys
 from importlib.machinery import SourceFileLoader
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,26 +13,26 @@ print("System Paths:")
 for p in sys.path:
     print(p)
 
-import matplotlib.pyplot as plt
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from tqdm import tqdm
 import wandb
+from tqdm import tqdm
 
 from datasets.gradslam_datasets import (
-    load_dataset_config,
+    Ai2thorDataset,
+    AzureKinectDataset,
     ICLDataset,
+    NeRFCaptureDataset,
+    RealsenseDataset,
+    Record3DDataset,
     ReplicaDataset,
     ReplicaV2Dataset,
-    AzureKinectDataset,
     ScannetDataset,
-    Ai2thorDataset,
-    Record3DDataset,
-    RealsenseDataset,
-    TUMDataset,
     ScannetPPDataset,
-    NeRFCaptureDataset,
+    TUMDataset,
+    load_dataset_config,
 )
 from utils.common_utils import seed_everything
 from utils.eval_helpers import eval, eval_nvs
@@ -41,33 +41,32 @@ from utils.eval_helpers import eval, eval_nvs
 def get_dataset(config_dict, basedir, sequence, **kwargs):
     if config_dict["dataset_name"].lower() in ["icl"]:
         return ICLDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replica"]:
+    if config_dict["dataset_name"].lower() in ["replica"]:
         return ReplicaDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replicav2"]:
+    if config_dict["dataset_name"].lower() in ["replicav2"]:
         return ReplicaV2Dataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
+    if config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
         return AzureKinectDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannet"]:
+    if config_dict["dataset_name"].lower() in ["scannet"]:
         return ScannetDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["ai2thor"]:
+    if config_dict["dataset_name"].lower() in ["ai2thor"]:
         return Ai2thorDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["record3d"]:
+    if config_dict["dataset_name"].lower() in ["record3d"]:
         return Record3DDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["realsense"]:
+    if config_dict["dataset_name"].lower() in ["realsense"]:
         return RealsenseDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["tum"]:
+    if config_dict["dataset_name"].lower() in ["tum"]:
         return TUMDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannetpp"]:
+    if config_dict["dataset_name"].lower() in ["scannetpp"]:
         return ScannetPPDataset(basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["nerfcapture"]:
+    if config_dict["dataset_name"].lower() in ["nerfcapture"]:
         return NeRFCaptureDataset(basedir, sequence, **kwargs)
-    else:
-        raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
+    raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
 
 
 def load_scene_data(scene_path):
     params = dict(np.load(scene_path, allow_pickle=True))
-    params = {k: torch.tensor(params[k]).cuda().float().requires_grad_(True) for k in params.keys()}
+    params = {k: torch.tensor(params[k]).cuda().float().requires_grad_(True) for k in params}
     return params
 
 
@@ -177,31 +176,30 @@ if __name__ == "__main__":
                     eval_every=config["eval_every"],
                     save_frames=True,
                 )
+        elif dataset_config["use_train_split"]:
+            eval(
+                dataset,
+                params,
+                num_frames,
+                eval_dir,
+                sil_thres=config["mapping"]["sil_thres"],
+                mapping_iters=config["mapping"]["num_iters"],
+                add_new_gaussians=config["mapping"]["add_new_gaussians"],
+                eval_every=config["eval_every"],
+                save_frames=True,
+            )
         else:
-            if dataset_config["use_train_split"]:
-                eval(
-                    dataset,
-                    params,
-                    num_frames,
-                    eval_dir,
-                    sil_thres=config["mapping"]["sil_thres"],
-                    mapping_iters=config["mapping"]["num_iters"],
-                    add_new_gaussians=config["mapping"]["add_new_gaussians"],
-                    eval_every=config["eval_every"],
-                    save_frames=True,
-                )
-            else:
-                eval_nvs(
-                    dataset,
-                    params,
-                    num_frames,
-                    eval_dir,
-                    sil_thres=config["mapping"]["sil_thres"],
-                    mapping_iters=config["mapping"]["num_iters"],
-                    add_new_gaussians=config["mapping"]["add_new_gaussians"],
-                    eval_every=config["eval_every"],
-                    save_frames=True,
-                )
+            eval_nvs(
+                dataset,
+                params,
+                num_frames,
+                eval_dir,
+                sil_thres=config["mapping"]["sil_thres"],
+                mapping_iters=config["mapping"]["num_iters"],
+                add_new_gaussians=config["mapping"]["add_new_gaussians"],
+                eval_every=config["eval_every"],
+                save_frames=True,
+            )
 
     # Close WandB
     if config["use_wandb"]:

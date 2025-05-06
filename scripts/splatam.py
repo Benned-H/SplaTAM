@@ -18,64 +18,62 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
 import wandb
+from diff_gaussian_rasterization import GaussianRasterizer as Renderer
+from tqdm import tqdm
 
 from datasets.gradslam_datasets import (
-    load_dataset_config,
+    Ai2thorDataset,
+    AzureKinectDataset,
     ICLDataset,
+    NeRFCaptureDataset,
+    RealsenseDataset,
+    Record3DDataset,
     ReplicaDataset,
     ReplicaV2Dataset,
-    AzureKinectDataset,
     ScannetDataset,
-    Ai2thorDataset,
-    Record3DDataset,
-    RealsenseDataset,
-    TUMDataset,
     ScannetPPDataset,
-    NeRFCaptureDataset,
+    TUMDataset,
+    load_dataset_config,
 )
-from utils.common_utils import seed_everything, save_params_ckpt, save_params
-from utils.eval_helpers import report_loss, report_progress, eval
+from utils.common_utils import save_params, save_params_ckpt, seed_everything
+from utils.eval_helpers import eval, report_loss, report_progress
 from utils.keyframe_selection import keyframe_selection_overlap
 from utils.recon_helpers import setup_camera
+from utils.slam_external import build_rotation, calc_ssim, densify, prune_gaussians
 from utils.slam_helpers import (
-    transformed_params2rendervar,
-    transformed_params2depthplussilhouette,
-    transform_to_frame,
     l1_loss_v1,
     matrix_to_quaternion,
+    transform_to_frame,
+    transformed_params2depthplussilhouette,
+    transformed_params2rendervar,
 )
-from utils.slam_external import calc_ssim, build_rotation, prune_gaussians, densify
-
-from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 
 
 def get_dataset(config_dict, basedir, sequence, **kwargs):
     if config_dict["dataset_name"].lower() in ["icl"]:
         return ICLDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replica"]:
+    if config_dict["dataset_name"].lower() in ["replica"]:
         return ReplicaDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["replicav2"]:
+    if config_dict["dataset_name"].lower() in ["replicav2"]:
         return ReplicaV2Dataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
+    if config_dict["dataset_name"].lower() in ["azure", "azurekinect"]:
         return AzureKinectDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannet"]:
+    if config_dict["dataset_name"].lower() in ["scannet"]:
         return ScannetDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["ai2thor"]:
+    if config_dict["dataset_name"].lower() in ["ai2thor"]:
         return Ai2thorDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["record3d"]:
+    if config_dict["dataset_name"].lower() in ["record3d"]:
         return Record3DDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["realsense"]:
+    if config_dict["dataset_name"].lower() in ["realsense"]:
         return RealsenseDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["tum"]:
+    if config_dict["dataset_name"].lower() in ["tum"]:
         return TUMDataset(config_dict, basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["scannetpp"]:
+    if config_dict["dataset_name"].lower() in ["scannetpp"]:
         return ScannetPPDataset(basedir, sequence, **kwargs)
-    elif config_dict["dataset_name"].lower() in ["nerfcapture"]:
+    if config_dict["dataset_name"].lower() in ["nerfcapture"]:
         return NeRFCaptureDataset(basedir, sequence, **kwargs)
-    else:
-        raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
+    raise ValueError(f"Unknown dataset name {config_dict['dataset_name']}")
 
 
 def get_pointcloud(
@@ -96,7 +94,9 @@ def get_pointcloud(
 
     # Compute indices of pixels
     x_grid, y_grid = torch.meshgrid(
-        torch.arange(width).cuda().float(), torch.arange(height).cuda().float(), indexing="xy"
+        torch.arange(width).cuda().float(),
+        torch.arange(height).cuda().float(),
+        indexing="xy",
     )
     xx = (x_grid - CX) / FX
     yy = (y_grid - CY) / FY
@@ -135,8 +135,7 @@ def get_pointcloud(
 
     if compute_mean_sq_dist:
         return point_cld, mean3_sq_dist
-    else:
-        return point_cld
+    return point_cld
 
 
 def initialize_params(init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribution):
@@ -168,7 +167,7 @@ def initialize_params(init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribut
         # Check if value is already a torch tensor
         if not isinstance(v, torch.Tensor):
             params[k] = torch.nn.Parameter(
-                torch.tensor(v).cuda().float().contiguous().requires_grad_(True)
+                torch.tensor(v).cuda().float().contiguous().requires_grad_(True),
             )
         else:
             params[k] = torch.nn.Parameter(v.cuda().float().contiguous().requires_grad_(True))
@@ -188,8 +187,7 @@ def initialize_optimizer(params, lrs_dict, tracking):
     param_groups = [{"params": [v], "name": k, "lr": lrs[k]} for k, v in params.items()]
     if tracking:
         return torch.optim.Adam(param_groups)
-    else:
-        return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
+    return torch.optim.Adam(param_groups, lr=0.0, eps=1e-15)
 
 
 def initialize_first_timestep(
@@ -213,7 +211,10 @@ def initialize_first_timestep(
 
     # Setup Camera
     cam = setup_camera(
-        color.shape[2], color.shape[1], intrinsics.cpu().numpy(), w2c.detach().cpu().numpy()
+        color.shape[2],
+        color.shape[1],
+        intrinsics.cpu().numpy(),
+        w2c.detach().cpu().numpy(),
     )
 
     if densify_dataset is not None:
@@ -246,7 +247,10 @@ def initialize_first_timestep(
 
     # Initialize Parameters
     params, variables = initialize_params(
-        init_pt_cld, num_frames, mean3_sq_dist, gaussian_distribution
+        init_pt_cld,
+        num_frames,
+        mean3_sq_dist,
+        gaussian_distribution,
     )
 
     # Initialize an estimate of scene radius for Gaussian-Splatting Densification
@@ -254,8 +258,7 @@ def initialize_first_timestep(
 
     if densify_dataset is not None:
         return params, variables, intrinsics, w2c, cam, densify_intrinsics, densify_cam
-    else:
-        return params, variables, intrinsics, w2c, cam
+    return params, variables, intrinsics, w2c, cam
 
 
 def get_loss(
@@ -281,29 +284,43 @@ def get_loss(
     if tracking:
         # Get current frame Gaussians, where only the camera pose gets gradient
         transformed_gaussians = transform_to_frame(
-            params, iter_time_idx, gaussians_grad=False, camera_grad=True
+            params,
+            iter_time_idx,
+            gaussians_grad=False,
+            camera_grad=True,
         )
     elif mapping:
         if do_ba:
             # Get current frame Gaussians, where both camera pose and Gaussians get gradient
             transformed_gaussians = transform_to_frame(
-                params, iter_time_idx, gaussians_grad=True, camera_grad=True
+                params,
+                iter_time_idx,
+                gaussians_grad=True,
+                camera_grad=True,
             )
         else:
             # Get current frame Gaussians, where only the Gaussians get gradient
             transformed_gaussians = transform_to_frame(
-                params, iter_time_idx, gaussians_grad=True, camera_grad=False
+                params,
+                iter_time_idx,
+                gaussians_grad=True,
+                camera_grad=False,
             )
     else:
         # Get current frame Gaussians, where only the Gaussians get gradient
         transformed_gaussians = transform_to_frame(
-            params, iter_time_idx, gaussians_grad=True, camera_grad=False
+            params,
+            iter_time_idx,
+            gaussians_grad=True,
+            camera_grad=False,
         )
 
     # Initialize Render Variables
     rendervar = transformed_params2rendervar(params, transformed_gaussians)
     depth_sil_rendervar = transformed_params2depthplussilhouette(
-        params, curr_data["w2c"], transformed_gaussians
+        params,
+        curr_data["w2c"],
+        transformed_gaussians,
     )
 
     # RGB Rendering
@@ -399,9 +416,9 @@ def get_loss(
         # Figure Tight Layout
         fig.tight_layout()
         os.makedirs(plot_dir, exist_ok=True)
-        plt.savefig(os.path.join(plot_dir, f"tmp.png"), bbox_inches="tight")
+        plt.savefig(os.path.join(plot_dir, "tmp.png"), bbox_inches="tight")
         plt.close()
-        plot_img = cv2.imread(os.path.join(plot_dir, f"tmp.png"))
+        plot_img = cv2.imread(os.path.join(plot_dir, "tmp.png"))
         cv2.imshow("Diff Images", plot_img)
         cv2.waitKey(1)
         ## Save Tracking Loss Viz
@@ -443,7 +460,7 @@ def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution):
         # Check if value is already a torch tensor
         if not isinstance(v, torch.Tensor):
             params[k] = torch.nn.Parameter(
-                torch.tensor(v).cuda().float().contiguous().requires_grad_(True)
+                torch.tensor(v).cuda().float().contiguous().requires_grad_(True),
             )
         else:
             params[k] = torch.nn.Parameter(v.cuda().float().contiguous().requires_grad_(True))
@@ -452,14 +469,25 @@ def initialize_new_params(new_pt_cld, mean3_sq_dist, gaussian_distribution):
 
 
 def add_new_gaussians(
-    params, variables, curr_data, sil_thres, time_idx, mean_sq_dist_method, gaussian_distribution
+    params,
+    variables,
+    curr_data,
+    sil_thres,
+    time_idx,
+    mean_sq_dist_method,
+    gaussian_distribution,
 ):
     # Silhouette Rendering
     transformed_gaussians = transform_to_frame(
-        params, time_idx, gaussians_grad=False, camera_grad=False
+        params,
+        time_idx,
+        gaussians_grad=False,
+        camera_grad=False,
     )
     depth_sil_rendervar = transformed_params2depthplussilhouette(
-        params, curr_data["w2c"], transformed_gaussians
+        params,
+        curr_data["w2c"],
+        transformed_gaussians,
     )
     (
         depth_sil,
@@ -482,7 +510,7 @@ def add_new_gaussians(
     if torch.sum(non_presence_mask) > 0:
         # Get the new pointcloud in the world frame
         curr_cam_rot = torch.nn.functional.normalize(
-            params["cam_unnorm_rots"][..., time_idx].detach()
+            params["cam_unnorm_rots"][..., time_idx].detach(),
         )
         curr_cam_tran = params["cam_trans"][..., time_idx].detach()
         curr_w2c = torch.eye(4).cuda().float()
@@ -529,10 +557,12 @@ def initialize_camera_pose(params, curr_time_idx, forward_prop):
         else:
             # Initialize the camera pose for the current frame
             params["cam_unnorm_rots"][..., curr_time_idx] = params["cam_unnorm_rots"][
-                ..., curr_time_idx - 1
+                ...,
+                curr_time_idx - 1,
             ].detach()
             params["cam_trans"][..., curr_time_idx] = params["cam_trans"][
-                ..., curr_time_idx - 1
+                ...,
+                curr_time_idx - 1,
             ].detach()
 
     return params
@@ -597,26 +627,24 @@ def rgbd_slam(config: dict):
         dataset_config["densification_image_height"] = dataset_config["desired_image_height"]
         dataset_config["densification_image_width"] = dataset_config["desired_image_width"]
         seperate_densification_res = False
+    elif (
+        dataset_config["densification_image_height"] != dataset_config["desired_image_height"]
+        or dataset_config["densification_image_width"] != dataset_config["desired_image_width"]
+    ):
+        seperate_densification_res = True
     else:
-        if (
-            dataset_config["densification_image_height"] != dataset_config["desired_image_height"]
-            or dataset_config["densification_image_width"] != dataset_config["desired_image_width"]
-        ):
-            seperate_densification_res = True
-        else:
-            seperate_densification_res = False
+        seperate_densification_res = False
     if "tracking_image_height" not in dataset_config:
         dataset_config["tracking_image_height"] = dataset_config["desired_image_height"]
         dataset_config["tracking_image_width"] = dataset_config["desired_image_width"]
         seperate_tracking_res = False
+    elif (
+        dataset_config["tracking_image_height"] != dataset_config["desired_image_height"]
+        or dataset_config["tracking_image_width"] != dataset_config["desired_image_width"]
+    ):
+        seperate_tracking_res = True
     else:
-        if (
-            dataset_config["tracking_image_height"] != dataset_config["desired_image_height"]
-            or dataset_config["tracking_image_width"] != dataset_config["desired_image_width"]
-        ):
-            seperate_tracking_res = True
-        else:
-            seperate_tracking_res = False
+        seperate_tracking_res = False
     # Poses are relative to the first frame
     dataset = get_dataset(
         config_dict=gradslam_data_cfg,
@@ -719,7 +747,9 @@ def rgbd_slam(config: dict):
         checkpoint_time_idx = config["checkpoint_time_idx"]
         print(f"Loading Checkpoint for Frame {checkpoint_time_idx}")
         ckpt_path = os.path.join(
-            config["workdir"], config["run_name"], f"params{checkpoint_time_idx}.npz"
+            config["workdir"],
+            config["run_name"],
+            f"params{checkpoint_time_idx}.npz",
         )
         params = dict(np.load(ckpt_path, allow_pickle=True))
         params = {
@@ -735,7 +765,7 @@ def rgbd_slam(config: dict):
                 config["workdir"],
                 config["run_name"],
                 f"keyframe_time_indices{checkpoint_time_idx}.npy",
-            )
+            ),
         )
         keyframe_time_indices = keyframe_time_indices.tolist()
         # Update the ground truth poses list
@@ -814,7 +844,9 @@ def rgbd_slam(config: dict):
         # Initialize the camera pose for the current frame
         if time_idx > 0:
             params = initialize_camera_pose(
-                params, time_idx, forward_prop=config["tracking"]["forward_prop"]
+                params,
+                time_idx,
+                forward_prop=config["tracking"]["forward_prop"],
             )
 
         # Tracking
@@ -825,7 +857,7 @@ def rgbd_slam(config: dict):
             # Keep Track of Best Candidate Rotation & Translation
             candidate_cam_unnorm_rot = params["cam_unnorm_rots"][..., time_idx].detach().clone()
             candidate_cam_tran = params["cam_trans"][..., time_idx].detach().clone()
-            current_min_loss = float(1e20)
+            current_min_loss = 1e20
             # Tracking Optimization
             iter = 0
             do_continue_slam = False
@@ -852,7 +884,10 @@ def rgbd_slam(config: dict):
                 if config["use_wandb"]:
                     # Report Loss
                     wandb_tracking_step = report_loss(
-                        losses, wandb_run, wandb_tracking_step, tracking=True
+                        losses,
+                        wandb_run,
+                        wandb_tracking_step,
+                        tracking=True,
                     )
                 # Backprop
                 loss.backward()
@@ -906,10 +941,11 @@ def rgbd_slam(config: dict):
                         and config["tracking"]["use_depth_loss_thres"]
                     ):
                         break
-                    elif config["tracking"]["use_depth_loss_thres"] and not do_continue_slam:
+                    if config["tracking"]["use_depth_loss_thres"] and not do_continue_slam:
                         do_continue_slam = True
                         progress_bar = tqdm(
-                            range(num_iters_tracking), desc=f"Tracking Time Step: {time_idx}"
+                            range(num_iters_tracking),
+                            desc=f"Tracking Time Step: {time_idx}",
                         )
                         num_iters_tracking = 2 * num_iters_tracking
                         if config["use_wandb"]:
@@ -917,7 +953,7 @@ def rgbd_slam(config: dict):
                                 {
                                     "Tracking/Extra Tracking Iters Frames": time_idx,
                                     "Tracking/step": wandb_time_step,
-                                }
+                                },
                             )
                     else:
                         break
@@ -1015,7 +1051,7 @@ def rgbd_slam(config: dict):
                         {
                             "Mapping/Number of Gaussians": post_num_pts,
                             "Mapping/step": wandb_time_step,
-                        }
+                        },
                     )
 
             with torch.no_grad():
@@ -1028,7 +1064,11 @@ def rgbd_slam(config: dict):
                 # Select Keyframes for Mapping
                 num_keyframes = config["mapping_window_size"] - 2
                 selected_keyframes = keyframe_selection_overlap(
-                    depth, curr_w2c, intrinsics, keyframe_list[:-1], num_keyframes
+                    depth,
+                    curr_w2c,
+                    intrinsics,
+                    keyframe_list[:-1],
+                    num_keyframes,
                 )
                 selected_time_idx = [
                     keyframe_list[frame_idx]["id"] for frame_idx in selected_keyframes
@@ -1091,7 +1131,10 @@ def rgbd_slam(config: dict):
                 if config["use_wandb"]:
                     # Report Loss
                     wandb_mapping_step = report_loss(
-                        losses, wandb_run, wandb_mapping_step, mapping=True
+                        losses,
+                        wandb_run,
+                        wandb_mapping_step,
+                        mapping=True,
                     )
                 # Backprop
                 loss.backward()
@@ -1099,7 +1142,11 @@ def rgbd_slam(config: dict):
                     # Prune Gaussians
                     if config["mapping"]["prune_gaussians"]:
                         params, variables = prune_gaussians(
-                            params, variables, optimizer, iter, config["mapping"]["pruning_dict"]
+                            params,
+                            variables,
+                            optimizer,
+                            iter,
+                            config["mapping"]["pruning_dict"],
                         )
                         if config["use_wandb"]:
                             wandb_run.log(
@@ -1108,12 +1155,16 @@ def rgbd_slam(config: dict):
                                         "means3D"
                                     ].shape[0],
                                     "Mapping/step": wandb_mapping_step,
-                                }
+                                },
                             )
                     # Gaussian-Splatting's Gradient-based Densification
                     if config["mapping"]["use_gaussian_splatting_densification"]:
                         params, variables = densify(
-                            params, variables, optimizer, iter, config["mapping"]["densify_dict"]
+                            params,
+                            variables,
+                            optimizer,
+                            iter,
+                            config["mapping"]["densify_dict"],
                         )
                         if config["use_wandb"]:
                             wandb_run.log(
@@ -1122,7 +1173,7 @@ def rgbd_slam(config: dict):
                                         "means3D"
                                     ].shape[0],
                                     "Mapping/step": wandb_mapping_step,
-                                }
+                                },
                             )
                     # Optimizer Update
                     optimizer.step()
@@ -1270,7 +1321,7 @@ def rgbd_slam(config: dict):
                 "Final Stats/Average Mapping Iteration Time (ms)": mapping_iter_time_avg * 1000,
                 "Final Stats/Average Mapping Frame Time (s)": mapping_frame_time_avg,
                 "Final Stats/step": 1,
-            }
+            },
         )
 
     # Evaluate Final Parameters

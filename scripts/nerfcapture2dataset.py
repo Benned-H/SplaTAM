@@ -1,30 +1,29 @@
-"""
-Script to capture a dataset from the NeRFCapture iOS App. Code is adapted from instant-ngp/scripts/nerfcapture2nerf.py.
+"""Script to capture a dataset from the NeRFCapture iOS App. Code is adapted from instant-ngp/scripts/nerfcapture2nerf.py.
 https://github.com/NVlabs/instant-ngp/blob/master/scripts/nerfcapture2nerf.py
 """
 #!/usr/bin/env python3
 
 import argparse
+import json
 import os
 import shutil
 import sys
-from pathlib import Path
-import json
 from importlib.machinery import SourceFileLoader
+from pathlib import Path
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, _BASE_DIR)
 
-import cv2
-import numpy as np
-
-import cyclonedds.idl as idl
-import cyclonedds.idl.annotations as annotate
-import cyclonedds.idl.types as types
 from dataclasses import dataclass
-from cyclonedds.domain import DomainParticipant, Domain
-from cyclonedds.core import Qos, Policy
+
+import cv2
+import cyclonedds.idl.annotations as annotate
+import numpy as np
+from cyclonedds import idl
+from cyclonedds.core import Policy, Qos
+from cyclonedds.domain import Domain, DomainParticipant
+from cyclonedds.idl import types
 from cyclonedds.sub import DataReader
 from cyclonedds.topic import Topic
 from cyclonedds.util import duration
@@ -33,7 +32,10 @@ from cyclonedds.util import duration
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", default="./configs/iphone/nerfcapture.py", type=str, help="Path to config file."
+        "--config",
+        default="./configs/iphone/nerfcapture.py",
+        type=str,
+        help="Path to config file.",
     )
     return parser.parse_args()
 
@@ -79,7 +81,11 @@ dds_config = """<?xml version="1.0" encoding="UTF-8" ?> \
 
 
 def dataset_capture_loop(
-    reader: DataReader, save_path: Path, overwrite: bool, n_frames: int, depth_scale: float
+    reader: DataReader,
+    save_path: Path,
+    overwrite: bool,
+    n_frames: int,
+    depth_scale: float,
 ):
     if save_path.exists():
         if overwrite:
@@ -126,7 +132,7 @@ def dataset_capture_loop(
 
             # RGB
             image = np.asarray(sample.image, dtype=np.uint8).reshape(
-                (sample.height, sample.width, 3)
+                (sample.height, sample.width, 3),
             )
             cv2.imwrite(
                 str(images_dir.joinpath(f"{total_frames}.png")),
@@ -143,7 +149,9 @@ def dataset_capture_loop(
                 )
                 depth = (depth * 65535 / float(depth_scale)).astype(np.uint16)
                 depth = cv2.resize(
-                    depth, dsize=(sample.width, sample.height), interpolation=cv2.INTER_NEAREST
+                    depth,
+                    dsize=(sample.width, sample.height),
+                    interpolation=cv2.INTER_NEAREST,
                 )
                 cv2.imwrite(str(depth_dir.joinpath(f"{total_frames}.png")), depth)
 
