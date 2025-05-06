@@ -31,7 +31,7 @@
 
 <br>
 
-## Stay Tuned for a Faster and Better Variant of SplaTAM! 
+## Stay Tuned for a Faster and Better Variant of SplaTAM!
 
 <!-- TABLE OF CONTENTS -->
 <details open="open" style='padding: 10px; border-radius:5px 30px 30px 5px; border-style: solid; border-width: 1px;'>
@@ -67,9 +67,10 @@
 ## Installation
 
 ##### (Recommended)
+
 SplaTAM has been benchmarked with Python 3.10, Torch 1.12.1 & CUDA=11.6. However, Torch 1.12 is not a hard requirement and the code has also been tested with other versions of Torch and CUDA such as Torch 2.3.0 & CUDA 12.1.
 
-The simplest way to install all dependences is to use [anaconda](https://www.anaconda.com/) and [pip](https://pypi.org/project/pip/) in the following steps: 
+The simplest way to install all dependences is to use [anaconda](https://www.anaconda.com/) and [pip](https://pypi.org/project/pip/) in the following steps:
 
 ```bash
 conda create -n splatam python=3.10
@@ -89,36 +90,24 @@ conda activate splatam
 
 For installation on Windows using Git bash, please refer to the [instructions shared in Issue#9](https://github.com/spla-tam/SplaTAM/issues/9#issuecomment-1848348403).
 
-#### Docker and Singularity Setup
+#### `uv` Setup
 
-We also provide a docker image. We recommend using a venv to run the code inside a docker image:
-
+Create a virtual environment using `uv` by running:
 
 ```bash
-docker pull nkeetha/splatam:v1
-bash bash_scripts/start_docker.bash
-cd /SplaTAM/
-pip install virtualenv --user
-mkdir venv
-cd venv
-virtualenv --system-site-packages splatam
-source ./splatam/bin/activate
-pip install -r venv_requirements.txt
+uv venv
+uv sync
 ```
 
-Setting up a singularity container is similar:
+Prepare to run SplaTAM by running the following commands:
+
 ```bash
-cd </path/to/singularity/folder/>
-singularity pull splatam.sif docker://nkeetha/splatam:v1
-singularity instance start --nv splatam.sif splatam
-singularity run --nv instance://splatam
-cd <path/to/SplaTAM/>
-pip install virtualenv --user
-mkdir venv
-cd venv
-virtualenv --system-site-packages splatam
-source ./splatam/bin/activate
-pip install -r venv_requirements.txt
+# Pre-set the receive and send buffer sizes to support SplaTAM
+sudo sysctl -w net.core.rmem_max=2147483647
+sudo sysctl -w net.core.wmem_max=2147483647
+
+# Used to specify the IP address of the sending device
+export CYCLONEDDS_URI=$(pwd)/configs/cyclonedds.xml
 ```
 
 ## Demo
@@ -129,7 +118,7 @@ You can SplaTAM your own environment with an iPhone or LiDAR-equipped Apple devi
 
 Make sure that your iPhone and PC are connected to the same WiFi network, and then run the following command:
 
- ```bash
+```bash
 bash bash_scripts/online_demo.bash configs/iphone/online_demo.py
 ```
 
@@ -246,10 +235,11 @@ Please follow the data downloading procedure on the [ScanNet](http://www.scan-ne
                     ├── ...
                     └── ...
 ```
+
 </details>
 
+We use the following sequences:
 
-We use the following sequences: 
 ```
 scene0000_00
 scene0059_00
@@ -260,10 +250,10 @@ scene0207_00
 
 ### ScanNet++
 
-Please follow the data downloading and image undistortion procedure on the <a href="https://kaldir.vc.in.tum.de/scannetpp/">ScanNet++</a> website. 
+Please follow the data downloading and image undistortion procedure on the <a href="https://kaldir.vc.in.tum.de/scannetpp/">ScanNet++</a> website.
 Additionally for undistorting the DSLR depth images, we use our <a href="https://github.com/Nik-V9/scannetpp">own variant of the official ScanNet++ processing code</a>. We will open a pull request to the official ScanNet++ repository soon.
 
-We use the following sequences: 
+We use the following sequences:
 
 ```
 8b5caf3398
@@ -278,7 +268,7 @@ We use the Replica-V2 dataset from vMAP to evaluate novel view synthesis. Please
 
 ## Benchmarking
 
-For running SplaTAM, we recommend using [weights and biases](https://wandb.ai/) for the logging. This can be turned on by setting the `wandb` flag to True in the configs file. Also make sure to specify the path `wandb_folder`. If you don't have a wandb account, first create one. Please make sure to change the `entity` config to your wandb account. Each scene has a config folder, where the `input_folder` and `output` paths need to be specified. 
+For running SplaTAM, we recommend using [weights and biases](https://wandb.ai/) for the logging. This can be turned on by setting the `wandb` flag to True in the configs file. Also make sure to specify the path `wandb_folder`. If you don't have a wandb account, first create one. Please make sure to change the `entity` config to your wandb account. Each scene has a config folder, where the `input_folder` and `output` paths need to be specified.
 
 Below, we show some example run commands for one scene from each dataset. After SLAM, the trajectory error will be evaluated along with the rendering metrics. The results will be saved to `./experiments` by default.
 
@@ -377,6 +367,7 @@ If you find our paper and code useful, please cite us:
 ```
 
 ## Developers
+
 - [Nik-V9](https://github.com/Nik-V9) ([Nikhil Keetha](https://nik-v9.github.io/))
 - [JayKarhade](https://github.com/JayKarhade) ([Jay Karhade](https://jaykarhade.github.io/))
 - [JonathonLuiten](https://github.com/JonathonLuiten) ([Jonathan Luiten](https://www.vision.rwth-aachen.de/person/216/))

@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# check rmem_max and wmem_max, and increase size if necessary
+set -euo pipefail
+
 if [ "$#" -ne 1 ]; then
     echo "Usage: bash_scripts/nerfcapture.bash <config_file>"
     exit
@@ -11,25 +12,14 @@ if [ ! -f $1 ]; then
     exit
 fi
 
-if sysctl -a | grep -q "net.core.rmem_max = 2147483647"; then
-    echo "rmem_max already set to 2147483647"
-else
-    echo "Setting rmem_max to 2147483647"
-    sudo sysctl -w net.core.rmem_max=2147483647
-fi
+echo "[uv sync] ensuring venv is up to date..."
+uv sync
 
-if sysctl -a | grep -q "net.core.wmem_max = 2147483647"; then
-    echo "wmem_max already set to 2147483647"
-else
-    echo "Setting wmem_max to 2147483647"
-    sudo sysctl -w net.core.wmem_max=2147483647
-fi
+echo "[dataset] running nerfcapture-dataset..."
+uv run --env-file .env scripts/nerfcapture2dataset.py --config $1
 
-# Capture Dataset
-python3 scripts/nerfcapture2dataset.py --config $1
+echo "[slam] running SplaTAM..."
+uv run scripts/splatam.py $1
 
-# Run SplaTAM
-python3 scripts/splatam.py $1
-
-# Visualize SplaTAM Output
-python3 viz_scripts/final_recon.py $1
+echo "[viz] visualizing output..."
+uv run viz_scripts/final_recon.py $1

@@ -1,0 +1,23 @@
+<CycloneDDS>
+    <Domain id="0">
+        <Tracing>
+            <Verbosity>fine</Verbosity>
+        </Tracing>
+        <General>
+            <ExternalNetworkAddress>10.42.0.1</ExternalNetworkAddress>
+            <ExternalNetworkMask>255.255.255.0</ExternalNetworkMask>
+            <AllowMulticast>true</AllowMulticast>
+            <Interfaces>
+                <NetworkInterface address="10.42.0.1"
+                    multicast="true"
+                    allow_multicast="true"
+                    autodetermine="false" 
+                    priority="10" />
+            </Interfaces>
+        </General>
+        <Discovery>
+            <!-- use a fixed index so SPDP goes to port 7400 -->
+            <ParticipantIndex>0</ParticipantIndex>
+        </Discovery>
+    </Domain>
+</CycloneDDS>

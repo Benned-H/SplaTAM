@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "pybind11>=2.9.1", "torch>=1.13"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "splatam"
+version = "0.0.1"
+classifiers = ["Typing :: Typed"]
+
+readme = "README.md"
+license-files = ["LICENSE"]
+requires-python = "== 3.10.*"
+
+dependencies = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "tqdm",
+    "Pillow",
+    "opencv-python",
+    "imageio",
+    "matplotlib",
+    "kornia",
+    "natsort",
+    "pyyaml",
+    "wandb",
+    "lpips",
+    "open3d",
+    "torchmetrics",
+    "cyclonedds",
+    "pytorch-msssim",
+    "plyfile",
+    "faiss-gpu",
+    "diff-gaussian-rasterization-w-depth @ file:///${PROJECT_ROOT}/diff-gaussian-rasterization-w-depth",
+]
+
+[dependency-groups]
+lint = ["ruff"]
+tests = ["pytest", "coverage", "hypothesis"]
+types = ["mypy", "typing-extensions"]
+
+
+[tool.uv]
+default-groups = ["tests", "types", "lint"]
+
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["ALL"] # Default to all Ruff rules, add ignores as needed
+ignore = [
+    "D203",   # No blank line between class definition and its docstring
+    "D213",   # Place docstring summary immediately after the opening quotes
+    "TRY003", # Permit defining exception messages at point of raising
+]
+unfixable = ["F401"] # Disable 'fix' for unused imports
+
+# Allow omission of return type on __init__
+flake8-annotations = { mypy-init-return = true }
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["S101"]   # Allow assertions in test files
+"**/scripts/*" = ["T201"] # Allow print statements in scripts
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+
+[tool.mypy]
+strict = true                   # Enable all optional error checking flags
+disallow_incomplete_defs = true # Allow entirely type-unannotated functions
+disallow_any_unimported = true
+implicit_optional = false
+check_untyped_defs = true       # Type-check interior of unannotated functions
+warn_return_any = true
+show_error_code_links = true    # Include documentation links for errors
+warn_unused_configs = true      # Warn if per-module mypy settings go unused
