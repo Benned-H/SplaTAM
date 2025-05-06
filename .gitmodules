@@ -1,3 +1,6 @@
 [submodule "docker/ros_docker"]
 	path = docker/ros_docker
 	url = git@github.com:Benned-H/ros_docker.git
+[submodule "diff-gaussian-rasterization-w-depth"]
+	path = diff-gaussian-rasterization-w-depth
+	url = git@github.com:Benned-H/diff-gaussian-rasterization-w-depth.git
