@@ -23,14 +23,10 @@ def homogenize_points(pts: torch.Tensor):
 
     """
     if not isinstance(pts, torch.Tensor):
-        raise TypeError(
-            "Expected input type torch.Tensor. Instead got {}".format(type(pts))
-        )
+        raise TypeError("Expected input type torch.Tensor. Instead got {}".format(type(pts)))
     if pts.dim() < 2:
         raise ValueError(
-            "Input tensor must have at least 2 dimensions. Got {} instad.".format(
-                pts.dim()
-            )
+            "Input tensor must have at least 2 dimensions. Got {} instad.".format(pts.dim())
         )
 
     return torch.nn.functional.pad(pts, (0, 1), "constant", 1.0)
@@ -55,14 +51,10 @@ def unhomogenize_points(pts: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
     """
     if not isinstance(pts, torch.Tensor):
-        raise TypeError(
-            "Expected input type torch.Tensor. Instead got {}".format(type(pts))
-        )
+        raise TypeError("Expected input type torch.Tensor. Instead got {}".format(type(pts)))
     if pts.dim() < 2:
         raise ValueError(
-            "Input tensor must have at least 2 dimensions. Got {} instad.".format(
-                pts.dim()
-            )
+            "Input tensor must have at least 2 dimensions. Got {} instad.".format(pts.dim())
         )
 
     # Get points with the last coordinate (scale) as 0 (points at infinity)
@@ -90,13 +82,11 @@ def quaternion_to_axisangle(quat: torch.Tensor) -> torch.Tensor:
     """
     if not torch.is_tensor(quat):
         raise TypeError(
-            "Expected input quat to be of type torch.Tensor."
-            " Got {} instead.".format(type(quat))
+            "Expected input quat to be of type torch.Tensor. Got {} instead.".format(type(quat))
         )
     if not quat.shape[-1] == 4:
         raise ValueError(
-            "Last dim of input quat must be of shape 4. "
-            "Got {} instead.".format(quat.shape[-1])
+            "Last dim of input quat must be of shape 4. Got {} instead.".format(quat.shape[-1])
         )
 
     # Unpack quat
@@ -139,9 +129,7 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1e-12):
     """
 
     if not quaternion.shape[-1] == 4:
-        raise ValueError(
-            "Input must be a tensor of shape (*, 4). Got {}.".format(quaternion.shape)
-        )
+        raise ValueError("Input must be a tensor of shape (*, 4). Got {}.".format(quaternion.shape))
     return torch.nn.functional.normalize(quaternion, p=2, dim=-1, eps=eps)
 
 
@@ -157,9 +145,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     """
     if not quaternion.shape[-1] == 4:
-        raise ValueError(
-            "Input must be a tensor of shape (*, 4). Got {}".format(quaternion.shape)
-        )
+        raise ValueError("Input must be a tensor of shape (*, 4). Got {}".format(quaternion.shape))
 
     # Normalize the input quaternion
     quaternion_norm = normalize_quaternion(quaternion)
@@ -215,9 +201,7 @@ def inverse_transfom_3d(trans: torch.Tensor):
     """
     if not torch.is_tensor(trans):
         raise TypeError(
-            "Expected input trans of type torch.Tensor. Got {} instead.".format(
-                type(trans)
-            )
+            "Expected input trans of type torch.Tensor. Got {} instead.".format(type(trans))
         )
     if not trans.dim() in (2, 3) and trans.shape[-2, :] == (4, 4):
         raise ValueError(
@@ -256,31 +240,21 @@ def compose_transforms_3d(trans1: torch.Tensor, trans2: torch.Tensor) -> torch.T
     """
     if not torch.is_tensor(trans1):
         raise TypeError(
-            "Expected input trans1 of type torch.Tensor. Got {} instead.".format(
-                type(trans1)
-            )
+            "Expected input trans1 of type torch.Tensor. Got {} instead.".format(type(trans1))
         )
     if not trans1.dim() in (2, 3) and trans1.shape[-2, :] == (4, 4):
         raise ValueError(
-            "Input size must be N x 4 x 4 or 4 x 4. Got {} instead.".format(
-                trans1.shape
-            )
+            "Input size must be N x 4 x 4 or 4 x 4. Got {} instead.".format(trans1.shape)
         )
     if not torch.is_tensor(trans2):
         raise TypeError(
-            "Expected input trans2 of type torch.Tensor. Got {} instead.".format(
-                type(trans2)
-            )
+            "Expected input trans2 of type torch.Tensor. Got {} instead.".format(type(trans2))
         )
     if not trans2.dim() in (2, 3) and trans2.shape[-2, :] == (4, 4):
         raise ValueError(
-            "Input size must be N x 4 x 4 or 4 x 4. Got {} instead.".format(
-                trans2.shape
-            )
+            "Input size must be N x 4 x 4 or 4 x 4. Got {} instead.".format(trans2.shape)
         )
-    assert (
-        trans1.shape == trans2.shape
-    ), "Both input transformations must have the same shape."
+    assert trans1.shape == trans2.shape, "Both input transformations must have the same shape."
 
     # Unpack into rmat, tvec
     rmat1: torch.Tensor = trans1[..., :3, :3]
@@ -316,30 +290,20 @@ def transform_pts_3d(pts_b: torch.Tensor, t_ab: torch.Tensor) -> torch.Tensor:
     """
     if not torch.is_tensor(pts_b):
         raise TypeError(
-            "Expected input pts_b of type torch.Tensor. Got {} instead.".format(
-                type(pts_b)
-            )
+            "Expected input pts_b of type torch.Tensor. Got {} instead.".format(type(pts_b))
         )
     if not torch.is_tensor(t_ab):
         raise TypeError(
-            "Expected input t_ab of type torch.Tensor. Got {} instead.".format(
-                type(t_ab)
-            )
+            "Expected input t_ab of type torch.Tensor. Got {} instead.".format(type(t_ab))
         )
     if pts_b.dim() < 2:
         raise ValueError(
-            "Expected pts_b to have at least 2 dimensions. Got {} instead.".format(
-                pts_b.dim()
-            )
+            "Expected pts_b to have at least 2 dimensions. Got {} instead.".format(pts_b.dim())
         )
     if t_ab.dim() != 2:
-        raise ValueError(
-            "Expected t_ab to have 2 dimensions. Got {} instead.".format(t_ab.dim())
-        )
+        raise ValueError("Expected t_ab to have 2 dimensions. Got {} instead.".format(t_ab.dim()))
     if t_ab.shape[0] != 4 or t_ab.shape[1] != 4:
-        raise ValueError(
-            "Expected t_ab to have shape (4, 4). Got {} instead.".format(t_ab.shape)
-        )
+        raise ValueError("Expected t_ab to have shape (4, 4). Got {} instead.".format(t_ab.shape))
 
     # Determine if we need to homogenize the points
     if pts_b.shape[-1] == 3:
@@ -348,9 +312,7 @@ def transform_pts_3d(pts_b: torch.Tensor, t_ab: torch.Tensor) -> torch.Tensor:
     # Apply the transformation
 
     if pts_b.dim() == 4:
-        pts_a_homo = torch.matmul(
-            t_ab.unsqueeze(0).unsqueeze(0), pts_b.unsqueeze(-1)
-        ).squeeze(-1)
+        pts_a_homo = torch.matmul(t_ab.unsqueeze(0).unsqueeze(0), pts_b.unsqueeze(-1)).squeeze(-1)
     else:
         pts_a_homo = torch.matmul(t_ab.unsqueeze(0), pts_b.unsqueeze(-1))
     pts_a = unhomogenize_points(pts_a_homo)
@@ -390,9 +352,7 @@ def transform_pts_nd_KF(pts, tform):
     return unhomogenize_points(pts_homo_tformed)
 
 
-def relative_transform_3d(
-    trans_01: torch.Tensor, trans_02: torch.Tensor
-) -> torch.Tensor:
+def relative_transform_3d(trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
     r"""Given two 3D homogeneous transforms `trans_01` and `trans_02`
     in the global frame '0', this function returns a relative
     transform `trans_12`.
@@ -446,41 +406,25 @@ def relative_transformation(
         >>> trans_12 = gradslam.geometry.geometryutils.relative_transformation(trans_01, trans_02)  # 4x4
     """
     if not torch.is_tensor(trans_01):
-        raise TypeError(
-            "Input trans_01 type is not a torch.Tensor. Got {}".format(type(trans_01))
-        )
+        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}".format(type(trans_01)))
     if not torch.is_tensor(trans_02):
-        raise TypeError(
-            "Input trans_02 type is not a torch.Tensor. Got {}".format(type(trans_02))
-        )
+        raise TypeError("Input trans_02 type is not a torch.Tensor. Got {}".format(type(trans_02)))
     if not trans_01.dim() in (2, 3) and trans_01.shape[-2:] == (4, 4):
-        raise ValueError(
-            "Input must be a of the shape Nx4x4 or 4x4."
-            " Got {}".format(trans_01.shape)
-        )
+        raise ValueError("Input must be a of the shape Nx4x4 or 4x4. Got {}".format(trans_01.shape))
     if not trans_02.dim() in (2, 3) and trans_02.shape[-2:] == (4, 4):
-        raise ValueError(
-            "Input must be a of the shape Nx4x4 or 4x4."
-            " Got {}".format(trans_02.shape)
-        )
+        raise ValueError("Input must be a of the shape Nx4x4 or 4x4. Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(
-            "Input number of dims must match. Got {} and {}".format(
-                trans_01.dim(), trans_02.dim()
-            )
+            "Input number of dims must match. Got {} and {}".format(trans_01.dim(), trans_02.dim())
         )
     trans_10: torch.Tensor = (
-        inverse_transformation(trans_01)
-        if orthogonal_rotations
-        else torch.inverse(trans_01)
+        inverse_transformation(trans_01) if orthogonal_rotations else torch.inverse(trans_01)
     )
     trans_12: torch.Tensor = compose_transformations(trans_10, trans_02)
     return trans_12
 
 
-def normalize_pixel_coords(
-    pixel_coords: torch.Tensor, height: int, width: int
-) -> torch.Tensor:
+def normalize_pixel_coords(pixel_coords: torch.Tensor, height: int, width: int) -> torch.Tensor:
     r"""Normalizes pixel coordinates, so that each dimension (x, y) is now
     in the range [-1, 1].
 
@@ -629,17 +573,11 @@ def cam2pixel(
             :math:`H \times W \times 2`)
 
     """
-    assert torch.is_tensor(
-        cam_coords_src
-    ), "cam_coords_src must be of type torch.Tensor."
+    assert torch.is_tensor(cam_coords_src), "cam_coords_src must be of type torch.Tensor."
     assert cam_coords_src.dim() in (3, 4), "cam_coords_src must have 3 or 4 dimensions."
     assert cam_coords_src.shape[-1] == 3
     assert torch.is_tensor(dst_proj_src), "dst_proj_src must be of type torch.Tensor."
-    assert (
-        dst_proj_src.dim() == 2
-        and dst_proj_src.shape[0] == 4
-        and dst_proj_src.shape[0] == 4
-    )
+    assert dst_proj_src.dim() == 2 and dst_proj_src.shape[0] == 4 and dst_proj_src.shape[0] == 4
 
     _, h, w, _ = cam_coords_src.shape
     pts: torch.Tensor = transform_pts_3d(cam_coords_src, dst_proj_src)
@@ -671,9 +609,7 @@ def pixel2cam(
     """
     if not torch.is_tensor(depth):
         raise TypeError(
-            "Expected depth to be of type torch.Tensor. Got {} instead.".format(
-                type(depth)
-            )
+            "Expected depth to be of type torch.Tensor. Got {} instead.".format(type(depth))
         )
     if not torch.is_tensor(intrinsics_inv):
         raise TypeError(
@@ -688,9 +624,7 @@ def pixel2cam(
             )
         )
     assert (
-        intrinsics_inv.shape[0] == 4
-        and intrinsics_inv.shape[1] == 4
-        and intrinsics_inv.dim() == 2
+        intrinsics_inv.shape[0] == 4 and intrinsics_inv.shape[1] == 4 and intrinsics_inv.dim() == 2
     )
 
     cam_coords: torch.Tensor = transform_pts_3d(
@@ -716,9 +650,7 @@ def cam2pixel_KF(
             :math:`H \times W \times 2`)
 
     """
-    assert torch.is_tensor(
-        cam_coords_src
-    ), "cam_coords_src must be of type torch.Tensor."
+    assert torch.is_tensor(cam_coords_src), "cam_coords_src must be of type torch.Tensor."
     # assert cam_coords_src.dim() > 3, 'cam_coords_src must have > 3 dimensions.'
     assert cam_coords_src.shape[-1] == 3
     assert torch.is_tensor(P), "dst_proj_src must be of type torch.Tensor."
@@ -749,20 +681,14 @@ def transform_pointcloud(pointcloud: torch.Tensor, transform: torch.Tensor):
 
     """
     if not torch.is_tensor(pointcloud):
-        raise TypeError(
-            "pointcloud should be tensor, but was %r instead" % type(pointcloud)
-        )
+        raise TypeError("pointcloud should be tensor, but was %r instead" % type(pointcloud))
 
     if not torch.is_tensor(transform):
-        raise TypeError(
-            "transform should be tensor, but was %r instead" % type(transform)
-        )
+        raise TypeError("transform should be tensor, but was %r instead" % type(transform))
 
     if not pointcloud.ndim == 2:
         raise ValueError(
-            "pointcloud should have ndim of 2, but had {} instead.".format(
-                pointcloud.ndim
-            )
+            "pointcloud should have ndim of 2, but had {} instead.".format(pointcloud.ndim)
         )
     if not pointcloud.shape[1] == 3:
         raise ValueError(
@@ -772,9 +698,7 @@ def transform_pointcloud(pointcloud: torch.Tensor, transform: torch.Tensor):
         )
     if not transform.shape[-2:] == (4, 4):
         raise ValueError(
-            "transform should be of shape (4, 4), but was {} instead.".format(
-                transform.shape
-            )
+            "transform should be of shape (4, 4), but was {} instead.".format(transform.shape)
         )
 
     # Rotation matrix
@@ -785,9 +709,7 @@ def transform_pointcloud(pointcloud: torch.Tensor, transform: torch.Tensor):
     # Transpose the pointcloud (to enable broadcast of rotation to each point)
     transposed_pointcloud = torch.transpose(pointcloud, 0, 1)
     # Rotate and translate cloud
-    transformed_pointcloud = torch.matmul(rmat, transposed_pointcloud) + tvec.unsqueeze(
-        1
-    )
+    transformed_pointcloud = torch.matmul(rmat, transposed_pointcloud) + tvec.unsqueeze(1)
     # Transpose the transformed cloud to original dimensions
     transformed_pointcloud = torch.transpose(transformed_pointcloud, 0, 1)
 
@@ -804,25 +726,17 @@ def transform_normals(normals: torch.Tensor, transform: torch.Tensor):
         raise TypeError("normals should be tensor, but was %r instead" % type(normals))
 
     if not torch.is_tensor(transform):
-        raise TypeError(
-            "transform should be tensor, but was %r instead" % type(transform)
-        )
+        raise TypeError("transform should be tensor, but was %r instead" % type(transform))
 
     if not normals.ndim == 2:
-        raise ValueError(
-            "normals should have ndim of 2, but had {} instead.".format(normals.ndim)
-        )
+        raise ValueError("normals should have ndim of 2, but had {} instead.".format(normals.ndim))
     if not normals.shape[1] == 3:
         raise ValueError(
-            "normals.shape[1] should be 3 (x, y, z), but was {} instead.".format(
-                normals.shape[1]
-            )
+            "normals.shape[1] should be 3 (x, y, z), but was {} instead.".format(normals.shape[1])
         )
     if not transform.shape[-2:] == (4, 4):
         raise ValueError(
-            "transform should be of shape (4, 4), but was {} instead.".format(
-                transform.shape
-            )
+            "transform should be of shape (4, 4), but was {} instead.".format(transform.shape)
         )
 
     # Rotation
@@ -838,7 +752,6 @@ def transform_normals(normals: torch.Tensor, transform: torch.Tensor):
 
 
 if __name__ == "__main__":
-
     # pts = torch.randn(20, 10, 3)
     # homo = homogenize_points(pts)
     # homo[0:3,0:3,3] = torch.zeros(3)

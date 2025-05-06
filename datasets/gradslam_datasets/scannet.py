@@ -61,4 +61,3 @@ class ScannetDataset(GradSLAMDataset):
         print(embedding_file_path)
         embedding = torch.load(embedding_file_path, map_location="cpu")
         return embedding.permute(0, 2, 3, 1)  # (1, H, W, embedding_dim)
-    

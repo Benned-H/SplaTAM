@@ -50,9 +50,13 @@ class Ai2thorDataset(GradSLAMDataset):
         if self.load_embeddings:
             if self.embedding_dir == "embed_semseg":
                 # embed_semseg is stored as uint16 pngs
-                embedding_paths = natsorted(glob.glob(f"{self.input_folder}/{self.embedding_dir}/*.png"))
+                embedding_paths = natsorted(
+                    glob.glob(f"{self.input_folder}/{self.embedding_dir}/*.png")
+                )
             else:
-                embedding_paths = natsorted(glob.glob(f"{self.input_folder}/{self.embedding_dir}/*.pt"))
+                embedding_paths = natsorted(
+                    glob.glob(f"{self.input_folder}/{self.embedding_dir}/*.pt")
+                )
         return color_paths, depth_paths, embedding_paths
 
     def load_poses(self):
@@ -67,7 +71,9 @@ class Ai2thorDataset(GradSLAMDataset):
         if self.embedding_dir == "embed_semseg":
             embedding = imageio.imread(embedding_file_path)  # (H, W)
             embedding = cv2.resize(
-                embedding, (self.desired_width, self.desired_height), interpolation=cv2.INTER_NEAREST
+                embedding,
+                (self.desired_width, self.desired_height),
+                interpolation=cv2.INTER_NEAREST,
             )
             embedding = torch.from_numpy(embedding).long()  # (H, W)
             embedding = F.one_hot(embedding, num_classes=self.embedding_dim)  # (H, W, C)

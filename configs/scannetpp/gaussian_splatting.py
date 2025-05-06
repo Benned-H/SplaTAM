@@ -40,19 +40,19 @@ config = dict(
     run_name=run_name,
     seed=seed,
     primary_device=primary_device,
-    map_every=map_every, # Mapping every nth frame
-    keyframe_every=keyframe_every, # Keyframe every nth frame
-    mapping_window_size=mapping_window_size, # Mapping window size
-    report_global_progress_every=5, # Report Global Progress every nth frame
-    eval_every=5, # Evaluate every nth frame (at end of SLAM)
-    scene_radius_depth_ratio=3, # Max First Frame Depth to Scene Radius Ratio (For Pruning/Densification)
-    mean_sq_dist_method="projective", # ["projective", "knn"] (Type of Mean Squared Distance Calculation for Scale of Gaussians)
-    gaussian_distribution="isotropic", # ["isotropic", "anisotropic"] (Isotropic -> Spherical Covariance, Anisotropic -> Ellipsoidal Covariance)
+    map_every=map_every,  # Mapping every nth frame
+    keyframe_every=keyframe_every,  # Keyframe every nth frame
+    mapping_window_size=mapping_window_size,  # Mapping window size
+    report_global_progress_every=5,  # Report Global Progress every nth frame
+    eval_every=5,  # Evaluate every nth frame (at end of SLAM)
+    scene_radius_depth_ratio=3,  # Max First Frame Depth to Scene Radius Ratio (For Pruning/Densification)
+    mean_sq_dist_method="projective",  # ["projective", "knn"] (Type of Mean Squared Distance Calculation for Scale of Gaussians)
+    gaussian_distribution="isotropic",  # ["isotropic", "anisotropic"] (Isotropic -> Spherical Covariance, Anisotropic -> Ellipsoidal Covariance)
     report_iter_progress=False,
     load_checkpoint=False,
     checkpoint_time_idx=0,
-    save_checkpoints=False, # Save Checkpoints
-    checkpoint_interval=5, # Checkpoint Interval
+    save_checkpoints=False,  # Save Checkpoints
+    checkpoint_interval=5,  # Checkpoint Interval
     use_wandb=True,
     wandb=dict(
         entity="theairlab",
@@ -81,8 +81,8 @@ config = dict(
     ),
     train=dict(
         num_iters_mapping=7000,
-        sil_thres=0.5, # For Addition of new Gaussians & Visualization
-        use_sil_for_loss=True, # Use Silhouette for Loss during Tracking
+        sil_thres=0.5,  # For Addition of new Gaussians & Visualization
+        use_sil_for_loss=True,  # Use Silhouette for Loss during Tracking
         loss_weights=dict(
             im=1.0,
             depth=0.0,
@@ -98,8 +98,8 @@ config = dict(
         ),
         lrs_mapping_means3D_final=0.0000032,
         lr_delay_mult=0.01,
-        use_gaussian_splatting_densification=True, # Use Gaussian Splatting-based Densification during Mapping
-        densify_dict=dict( # Needs to be updated based on the number of mapping iterations
+        use_gaussian_splatting_densification=True,  # Use Gaussian Splatting-based Densification during Mapping
+        densify_dict=dict(  # Needs to be updated based on the number of mapping iterations
             start_after=500,
             remove_big_after=3000,
             stop_after=15000,
@@ -109,18 +109,20 @@ config = dict(
             removal_opacity_threshold=0.005,
             final_removal_opacity_threshold=0.005,
             reset_opacities=True,
-            reset_opacities_every=3000, # Doesn't consider iter 0
+            reset_opacities_every=3000,  # Doesn't consider iter 0
         ),
     ),
     viz=dict(
-        render_mode='color', # ['color', 'depth' or 'centers']
-        offset_first_viz_cam=True, # Offsets the view camera back by 0.5 units along the view direction (For Final Recon Viz)
-        show_sil=False, # Show Silhouette instead of RGB
-        visualize_cams=True, # Visualize Camera Frustums and Trajectory
-        viz_w=600, viz_h=340,
-        viz_near=0.01, viz_far=100.0,
+        render_mode="color",  # ['color', 'depth' or 'centers']
+        offset_first_viz_cam=True,  # Offsets the view camera back by 0.5 units along the view direction (For Final Recon Viz)
+        show_sil=False,  # Show Silhouette instead of RGB
+        visualize_cams=True,  # Visualize Camera Frustums and Trajectory
+        viz_w=600,
+        viz_h=340,
+        viz_near=0.01,
+        viz_far=100.0,
         view_scale=2,
-        viz_fps=5, # FPS for Online Recon Viz
-        enter_interactive_post_online=True, # Enter Interactive Mode after Online Recon Viz
+        viz_fps=5,  # FPS for Online Recon Viz
+        enter_interactive_post_online=True,  # Enter Interactive Mode after Online Recon Viz
     ),
 )

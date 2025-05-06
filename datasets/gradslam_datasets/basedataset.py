@@ -152,7 +152,11 @@ class GradSLAMDataset(torch.utils.data.Dataset):
         if start < 0:
             raise ValueError("start must be positive. Got {0}.".format(stride))
         if not (end == -1 or end > start):
-            raise ValueError("end ({0}) must be -1 (use all images) or greater than start ({1})".format(end, start))
+            raise ValueError(
+                "end ({0}) must be -1 (use all images) or greater than start ({1})".format(
+                    end, start
+                )
+            )
 
         self.distortion = (
             np.array(config_dict["camera_params"]["distortion"])
@@ -160,7 +164,9 @@ class GradSLAMDataset(torch.utils.data.Dataset):
             else None
         )
         self.crop_size = (
-            config_dict["camera_params"]["crop_size"] if "crop_size" in config_dict["camera_params"] else None
+            config_dict["camera_params"]["crop_size"]
+            if "crop_size" in config_dict["camera_params"]
+            else None
         )
 
         self.crop_edge = None
@@ -172,7 +178,9 @@ class GradSLAMDataset(torch.utils.data.Dataset):
             raise ValueError("Number of color and depth images must be the same.")
         if self.load_embeddings:
             if len(self.color_paths) != len(self.embedding_paths):
-                raise ValueError("Mismatch between number of color images and number of embedding files.")
+                raise ValueError(
+                    "Mismatch between number of color images and number of embedding files."
+                )
         self.num_imgs = len(self.color_paths)
         self.poses = self.load_poses()
 

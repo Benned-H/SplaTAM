@@ -55,9 +55,7 @@ def channels_first(rgb: Union[torch.Tensor, np.ndarray]):
         raise TypeError("Unsupported input rgb type {}".format(type(rgb)))
 
     if rgb.ndim < 3:
-        raise ValueError(
-            "Input rgb must contain atleast 3 dims, but had {} dims.".format(rgb.ndim)
-        )
+        raise ValueError("Input rgb must contain atleast 3 dims, but had {} dims.".format(rgb.ndim))
     if rgb.shape[-3] < rgb.shape[-1]:
         msg = "Are you sure that the input is correct? Number of channels exceeds height of image: %r > %r"
         warnings.warn(msg % (rgb.shape[-1], rgb.shape[-3]))
@@ -147,9 +145,7 @@ def pointquaternion_to_homogeneous(
         - Output: :math:`(*, 4, 4)`
 
     """
-    if not (
-        isinstance(pointquaternions, np.ndarray) or torch.is_tensor(pointquaternions)
-    ):
+    if not (isinstance(pointquaternions, np.ndarray) or torch.is_tensor(pointquaternions)):
         raise TypeError(
             '"pointquaternions" must be of type "np.ndarray" or "torch.Tensor". Got {0}'.format(
                 type(pointquaternions)
@@ -159,9 +155,7 @@ def pointquaternion_to_homogeneous(
         raise TypeError('"eps" must be of type "float". Got {0}.'.format(type(eps)))
     if pointquaternions.shape[-1] != 7:
         raise ValueError(
-            '"pointquaternions" must be of shape (*, 7). Got {0}.'.format(
-                pointquaternions.shape
-            )
+            '"pointquaternions" must be of shape (*, 7). Got {0}.'.format(pointquaternions.shape)
         )
 
     output_shape = (*pointquaternions.shape[:-1], 4, 4)
@@ -172,15 +166,11 @@ def pointquaternion_to_homogeneous(
     else:
         t = pointquaternions[..., :3].float()
         q = pointquaternions[..., 3:7].float()
-        transform = torch.zeros(
-            output_shape, dtype=torch.float, device=pointquaternions.device
-        )
+        transform = torch.zeros(output_shape, dtype=torch.float, device=pointquaternions.device)
 
-    q_norm = (0.5 * (q ** 2).sum(-1)[..., None]) ** 0.5
+    q_norm = (0.5 * (q**2).sum(-1)[..., None]) ** 0.5
     q /= (
-        torch.max(q_norm, torch.tensor(eps))
-        if torch.is_tensor(q_norm)
-        else np.maximum(q_norm, eps)
+        torch.max(q_norm, torch.tensor(eps)) if torch.is_tensor(q_norm) else np.maximum(q_norm, eps)
     )
 
     if isinstance(q, np.ndarray):
@@ -255,9 +245,7 @@ def create_label_image(prediction: np.ndarray, color_palette: OrderedDict):
         - Output: :math:`(H, W)`
     """
 
-    label_image = np.zeros(
-        (prediction.shape[0], prediction.shape[1], 3), dtype=np.uint8
-    )
+    label_image = np.zeros((prediction.shape[0], prediction.shape[1], 3), dtype=np.uint8)
     for idx, color in enumerate(color_palette):
         label_image[prediction == idx] = color
     return label_image

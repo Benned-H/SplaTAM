@@ -81,7 +81,8 @@ class AzureKinectDataset(GradSLAMDataset):
                     lines = f.readlines()
                 if len(lines) % 5 != 0:
                     raise ValueError(
-                        "Incorrect file format for .log odom file " "Number of non-empty lines must be a multiple of 5"
+                        "Incorrect file format for .log odom file "
+                        "Number of non-empty lines must be a multiple of 5"
                     )
                 num_lines = len(lines) // 5
                 for i in range(0, num_lines):

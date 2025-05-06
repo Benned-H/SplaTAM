@@ -53,7 +53,9 @@ class ICLDataset(GradSLAMDataset):
         embedding_paths = None
         if self.load_embeddings:
             embedding_paths = natsorted(
-                glob.glob(f"{self.input_folder}/{self.embedding_dir}/*.{self.embedding_file_extension}")
+                glob.glob(
+                    f"{self.input_folder}/{self.embedding_dir}/*.{self.embedding_file_extension}"
+                )
             )
         return color_paths, depth_paths, embedding_paths
 

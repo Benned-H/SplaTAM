@@ -40,13 +40,15 @@ class ScannetPPDataset(GradSLAMDataset):
         self.use_train_split = use_train_split
 
         # Load Train & Test Split
-        self.train_test_split = json.load(open(f"{self.input_folder}/dslr/train_test_lists.json", "r"))
+        self.train_test_split = json.load(
+            open(f"{self.input_folder}/dslr/train_test_lists.json", "r")
+        )
         if self.use_train_split:
             self.image_names = self.train_test_split["train"]
         else:
             self.image_names = self.train_test_split["test"]
             self.train_image_names = self.train_test_split["train"]
-        
+
         # Load NeRFStudio format camera & poses data
         self.cams_metadata = self.load_cams_metadata()
         if self.use_train_split:
@@ -56,11 +58,13 @@ class ScannetPPDataset(GradSLAMDataset):
             self.frames_metadata = self.cams_metadata["test_frames"]
             self.train_frames_metadata = self.cams_metadata["frames"]
             self.filepath_index_mapping = create_filepath_index_mapping(self.frames_metadata)
-            self.train_filepath_index_mapping = create_filepath_index_mapping(self.train_frames_metadata) 
+            self.train_filepath_index_mapping = create_filepath_index_mapping(
+                self.train_frames_metadata
+            )
 
         # Init Intrinsics
         config_dict["camera_params"] = {}
-        config_dict["camera_params"]["png_depth_scale"] = 1000.0 # Depth is in mm
+        config_dict["camera_params"]["png_depth_scale"] = 1000.0  # Depth is in mm
         config_dict["camera_params"]["image_height"] = self.cams_metadata["h"]
         config_dict["camera_params"]["image_width"] = self.cams_metadata["w"]
         config_dict["camera_params"]["fx"] = self.cams_metadata["fl_x"]
@@ -79,44 +83,43 @@ class ScannetPPDataset(GradSLAMDataset):
             embedding_dir=embedding_dir,
             embedding_dim=embedding_dim,
             **kwargs,
-        ) 
+        )
 
     def load_cams_metadata(self):
         cams_metadata_path = f"{self.input_folder}/dslr/nerfstudio/transforms_undistorted.json"
         cams_metadata = json.load(open(cams_metadata_path, "r"))
         return cams_metadata
-    
+
     def get_filepaths(self):
         base_path = f"{self.input_folder}/dslr"
         color_paths = []
         depth_paths = []
         self.tmp_poses = []
-        P = torch.tensor(
-            [
-                [1, 0, 0, 0],
-                [0, -1, 0, 0],
-                [0, 0, -1, 0],
-                [0, 0, 0, 1]
-            ]
-        ).float()
+        P = torch.tensor([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]]).float()
         if not self.use_train_split:
             self.first_train_image_name = self.train_image_names[0]
-            self.first_train_image_index = self.train_filepath_index_mapping.get(self.first_train_image_name)
-            self.first_train_frame_metadata = self.train_frames_metadata[self.first_train_image_index]
+            self.first_train_image_index = self.train_filepath_index_mapping.get(
+                self.first_train_image_name
+            )
+            self.first_train_frame_metadata = self.train_frames_metadata[
+                self.first_train_image_index
+            ]
             # Get path of undistorted image and depth
             color_path = f"{base_path}/undistorted_images/{self.first_train_image_name}"
             depth_path = f"{base_path}/undistorted_depths/{self.first_train_image_name.replace('.JPG', '.png')}"
             color_paths.append(color_path)
             depth_paths.append(depth_path)
             # Get pose of first train frame in GradSLAM format
-            c2w = torch.from_numpy(np.array(self.first_train_frame_metadata["transform_matrix"])).float()
+            c2w = torch.from_numpy(
+                np.array(self.first_train_frame_metadata["transform_matrix"])
+            ).float()
             _pose = P @ c2w @ P.T
             self.tmp_poses.append(_pose)
         for image_name in self.image_names:
             # Search for image name in frames_metadata
             frame_metadata = self.frames_metadata[self.filepath_index_mapping.get(image_name)]
             # Check if frame is blurry and if it needs to be ignored
-            if self.ignore_bad and frame_metadata['is_bad']:
+            if self.ignore_bad and frame_metadata["is_bad"]:
                 continue
             # Get path of undistorted image and depth
             color_path = f"{base_path}/undistorted_images/{image_name}"
