@@ -33,6 +33,7 @@ dependencies = [
     "plyfile",
     "faiss-gpu",
     "diff-gaussian-rasterization-w-depth @ file:///${PROJECT_ROOT}/diff-gaussian-rasterization-w-depth",
+    "transform-utils @ file:///${PROJECT_ROOT}/transform-utils",
 ]
 
 [dependency-groups]
@@ -43,6 +44,9 @@ types = ["mypy", "typing-extensions"]
 
 [tool.uv]
 default-groups = ["tests", "types", "lint"]
+
+[tool.uv.sources]
+transform_utils = { path = "transform-utils" }
 
 
 [tool.ruff]
