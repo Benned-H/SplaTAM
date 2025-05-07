@@ -1,3 +1,6 @@
 [submodule "diff-gaussian-rasterization-w-depth"]
 	path = diff-gaussian-rasterization-w-depth
 	url = git@github.com:Benned-H/diff-gaussian-rasterization-w-depth.git
+[submodule "transform_utils"]
+	path = transform_utils
+	url = git@github.com:Benned-H/transform_utils.git
