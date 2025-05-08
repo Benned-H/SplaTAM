@@ -18,8 +18,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-# import wandb
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from tqdm import tqdm
 
@@ -596,19 +594,6 @@ def rgbd_slam(config: dict):
     eval_dir = os.path.join(output_dir, "eval")
     os.makedirs(eval_dir, exist_ok=True)
 
-    # # Init WandB
-    # if config["use_wandb"]:
-    #     wandb_time_step = 0
-    #     wandb_tracking_step = 0
-    #     wandb_mapping_step = 0
-    #     wandb_run = wandb.init(
-    #         project=config["wandb"]["project"],
-    #         entity=config["wandb"]["entity"],
-    #         group=config["wandb"]["group"],
-    #         name=config["wandb"]["name"],
-    #         config=config,
-    #     )
-
     # Get Device
     device = torch.device(config["primary_device"])
 
@@ -882,14 +867,7 @@ def rgbd_slam(config: dict):
                     visualize_tracking_loss=config["tracking"]["visualize_tracking_loss"],
                     tracking_iteration=iter,
                 )
-                # if config["use_wandb"]:
-                #     # Report Loss
-                #     wandb_tracking_step = report_loss(
-                #         losses,
-                #         wandb_run,
-                #         wandb_tracking_step,
-                #         tracking=True,
-                #     )
+
                 # Backprop
                 loss.backward()
                 # Optimizer Update
@@ -905,20 +883,6 @@ def rgbd_slam(config: dict):
                         candidate_cam_tran = params["cam_trans"][..., time_idx].detach().clone()
                     # Report Progress
                     if config["report_iter_progress"]:
-                        # if config["use_wandb"]:
-                        #     report_progress(
-                        #         params,
-                        #         tracking_curr_data,
-                        #         iter + 1,
-                        #         progress_bar,
-                        #         iter_time_idx,
-                        #         sil_thres=config["tracking"]["sil_thres"],
-                        #         tracking=True,
-                        #         wandb_run=wandb_run,
-                        #         wandb_step=wandb_tracking_step,
-                        #         wandb_save_qual=config["wandb"]["save_qual"],
-                        #     )
-                        # else:
                         report_progress(
                             params,
                             tracking_curr_data,
@@ -949,13 +913,7 @@ def rgbd_slam(config: dict):
                             desc=f"Tracking Time Step: {time_idx}",
                         )
                         num_iters_tracking = 2 * num_iters_tracking
-                        # if config["use_wandb"]:
-                        #     wandb_run.log(
-                        #         {
-                        #             "Tracking/Extra Tracking Iters Frames": time_idx,
-                        #             "Tracking/step": wandb_time_step,
-                        #         },
-                        #     )
+
                     else:
                         break
 
@@ -984,21 +942,6 @@ def rgbd_slam(config: dict):
                 # Report Final Tracking Progress
                 progress_bar = tqdm(range(1), desc=f"Tracking Result Time Step: {time_idx}")
                 with torch.no_grad():
-                    # if config["use_wandb"]:
-                    #     report_progress(
-                    #         params,
-                    #         tracking_curr_data,
-                    #         1,
-                    #         progress_bar,
-                    #         iter_time_idx,
-                    #         sil_thres=config["tracking"]["sil_thres"],
-                    #         tracking=True,
-                    #         wandb_run=wandb_run,
-                    #         wandb_step=wandb_time_step,
-                    #         wandb_save_qual=config["wandb"]["save_qual"],
-                    #         global_logging=True,
-                    #     )
-                    # else:
                     report_progress(
                         params,
                         tracking_curr_data,
@@ -1047,13 +990,6 @@ def rgbd_slam(config: dict):
                     config["gaussian_distribution"],
                 )
                 post_num_pts = params["means3D"].shape[0]
-                # if config["use_wandb"]:
-                #     wandb_run.log(
-                #         {
-                #             "Mapping/Number of Gaussians": post_num_pts,
-                #             "Mapping/step": wandb_time_step,
-                #         },
-                #     )
 
             with torch.no_grad():
                 # Get the current estimated rotation & translation
@@ -1129,14 +1065,7 @@ def rgbd_slam(config: dict):
                     config["mapping"]["ignore_outlier_depth_loss"],
                     mapping=True,
                 )
-                # if config["use_wandb"]:
-                #     # Report Loss
-                #     wandb_mapping_step = report_loss(
-                #         losses,
-                #         wandb_run,
-                #         wandb_mapping_step,
-                #         mapping=True,
-                #     )
+
                 # Backprop
                 loss.backward()
                 with torch.no_grad():
@@ -1149,15 +1078,7 @@ def rgbd_slam(config: dict):
                             iter,
                             config["mapping"]["pruning_dict"],
                         )
-                        # if config["use_wandb"]:
-                        #     wandb_run.log(
-                        #         {
-                        #             "Mapping/Number of Gaussians - Pruning": params[
-                        #                 "means3D"
-                        #             ].shape[0],
-                        #             "Mapping/step": wandb_mapping_step,
-                        #         },
-                        #     )
+
                     # Gaussian-Splatting's Gradient-based Densification
                     if config["mapping"]["use_gaussian_splatting_densification"]:
                         params, variables = densify(
@@ -1167,35 +1088,12 @@ def rgbd_slam(config: dict):
                             iter,
                             config["mapping"]["densify_dict"],
                         )
-                        # if config["use_wandb"]:
-                        #     wandb_run.log(
-                        #         {
-                        #             "Mapping/Number of Gaussians - Densification": params[
-                        #                 "means3D"
-                        #             ].shape[0],
-                        #             "Mapping/step": wandb_mapping_step,
-                        #         },
-                        #     )
+
                     # Optimizer Update
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
                     # Report Progress
                     if config["report_iter_progress"]:
-                        # if config["use_wandb"]:
-                        #     report_progress(
-                        #         params,
-                        #         iter_data,
-                        #         iter + 1,
-                        #         progress_bar,
-                        #         iter_time_idx,
-                        #         sil_thres=config["mapping"]["sil_thres"],
-                        #         wandb_run=wandb_run,
-                        #         wandb_step=wandb_mapping_step,
-                        #         wandb_save_qual=config["wandb"]["save_qual"],
-                        #         mapping=True,
-                        #         online_time_idx=time_idx,
-                        #     )
-                        # else:
                         report_progress(
                             params,
                             iter_data,
@@ -1224,22 +1122,6 @@ def rgbd_slam(config: dict):
                     # Report Mapping Progress
                     progress_bar = tqdm(range(1), desc=f"Mapping Result Time Step: {time_idx}")
                     with torch.no_grad():
-                        # if config["use_wandb"]:
-                        #     report_progress(
-                        #         params,
-                        #         curr_data,
-                        #         1,
-                        #         progress_bar,
-                        #         time_idx,
-                        #         sil_thres=config["mapping"]["sil_thres"],
-                        #         wandb_run=wandb_run,
-                        #         wandb_step=wandb_time_step,
-                        #         wandb_save_qual=config["wandb"]["save_qual"],
-                        #         mapping=True,
-                        #         online_time_idx=time_idx,
-                        #         global_logging=True,
-                        #     )
-                        # else:
                         report_progress(
                             params,
                             curr_data,
@@ -1293,10 +1175,6 @@ def rgbd_slam(config: dict):
                 np.array(keyframe_time_indices),
             )
 
-        # # Increment WandB Time Step
-        # if config["use_wandb"]:
-        #     wandb_time_step += 1
-
         torch.cuda.empty_cache()
 
     # Compute Average Runtimes
@@ -1314,33 +1192,9 @@ def rgbd_slam(config: dict):
     print(f"Average Tracking/Frame Time: {tracking_frame_time_avg} s")
     print(f"Average Mapping/Iteration Time: {mapping_iter_time_avg * 1000} ms")
     print(f"Average Mapping/Frame Time: {mapping_frame_time_avg} s")
-    # if config["use_wandb"]:
-    #     wandb_run.log(
-    #         {
-    #             "Final Stats/Average Tracking Iteration Time (ms)": tracking_iter_time_avg * 1000,
-    #             "Final Stats/Average Tracking Frame Time (s)": tracking_frame_time_avg,
-    #             "Final Stats/Average Mapping Iteration Time (ms)": mapping_iter_time_avg * 1000,
-    #             "Final Stats/Average Mapping Frame Time (s)": mapping_frame_time_avg,
-    #             "Final Stats/step": 1,
-    #         },
-    #     )
 
     # Evaluate Final Parameters
     with torch.no_grad():
-        # if config["use_wandb"]:
-        #     eval(
-        #         dataset,
-        #         params,
-        #         num_frames,
-        #         eval_dir,
-        #         sil_thres=config["mapping"]["sil_thres"],
-        #         wandb_run=wandb_run,
-        #         wandb_save_qual=config["wandb"]["eval_save_qual"],
-        #         mapping_iters=config["mapping"]["num_iters"],
-        #         add_new_gaussians=config["mapping"]["add_new_gaussians"],
-        #         eval_every=config["eval_every"],
-        #     )
-        # else:
         eval(
             dataset,
             params,
@@ -1366,10 +1220,6 @@ def rgbd_slam(config: dict):
 
     # Save Parameters
     save_params(params, output_dir)
-
-    # # Close WandB Run
-    # if config["use_wandb"]:
-    #     wandb.finish()
 
 
 if __name__ == "__main__":

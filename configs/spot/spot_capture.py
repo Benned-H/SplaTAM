@@ -17,7 +17,7 @@ mapping_iters = 60  # Default: 60
 config = {
     "workdir": f"./{base_dir}/{scene_name}",
     "run_name": "Spot_Capture",
-    "overwrite": False,  # Rewrite over dataset if it exists?
+    "overwrite": True,  # Rewrite over dataset if it exists?
     "depth_scale": 10.0,  # Depth Scale used when saving depth
     "num_frames": num_frames,
     "seed": 0,
@@ -35,7 +35,6 @@ config = {
     "checkpoint_time_idx": 130,
     "save_checkpoints": False,  # Save Checkpoints
     "checkpoint_interval": 5,  # Checkpoint Interval
-    "use_wandb": False,
     "data": {
         "dataset_name": "nerfcapture",
         "basedir": base_dir,
@@ -129,12 +128,12 @@ config = {
         "offset_first_viz_cam": True,  # Offsets the view camera back by 0.5 units along the view direction (For Final Recon Viz)
         "show_sil": False,  # Show Silhouette instead of RGB
         "visualize_cams": True,  # Visualize Camera Frustums and Trajectory
-        "viz_w": 600,
-        "viz_h": 340,
+        "viz_w": 1920,
+        "viz_h": 1080,
         "viz_near": 0.01,
         "viz_far": 100.0,
         "view_scale": 2,
-        "viz_fps": 5,  # FPS for Online Recon Viz
+        "viz_fps": 10,  # FPS for Online Recon Viz
         "enter_interactive_post_online": False,  # Enter Interactive Mode after Online Recon Viz
     },
 }
