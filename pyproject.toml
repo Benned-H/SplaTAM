@@ -33,7 +33,7 @@ dependencies = [
     "plyfile",
     "faiss-gpu",
     "diff-gaussian-rasterization-w-depth @ file:///${PROJECT_ROOT}/diff-gaussian-rasterization-w-depth",
-    "transform-utils @ file:///${PROJECT_ROOT}/transform-utils",
+    "transform-utils @ file:///${PROJECT_ROOT}/transform_utils",
 ]
 
 [dependency-groups]
@@ -46,7 +46,7 @@ types = ["mypy", "typing-extensions"]
 default-groups = ["tests", "types", "lint"]
 
 [tool.uv.sources]
-transform_utils = { path = "transform-utils" }
+transform-utils = { path = "transform_utils" }
 
 
 [tool.ruff]
@@ -59,6 +59,7 @@ ignore = [
     "D203",   # No blank line between class definition and its docstring
     "D213",   # Place docstring summary immediately after the opening quotes
     "TRY003", # Permit defining exception messages at point of raising
+    "N806",   # Allow non-lowercase variable names in functions (helps w/ matrices)
 ]
 unfixable = ["F401"] # Disable 'fix' for unused imports
 

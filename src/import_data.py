@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 import open3d as o3d
 from PIL import Image
+
+from src.vision_utils import CameraIntrinsics, PosedRGBD, depthmap_to_points
 from transform_utils.kinematics import Point3D, Pose3D, Quaternion
 
 
@@ -46,20 +48,11 @@ class PosedImage:
     pose: Pose3D
 
 
-@dataclass(frozen=True)
-class PosedRGBD:
-    """An RGB-D image pair taken at a known camera pose."""
-
-    rgb: np.ndarray
-    depth: np.ndarray
-    pose: Pose3D
-
-
 def load_frame_poses(pose_pkl: Path) -> dict[FrameID, Pose3D]:
     """Load per-frame pose data from the given pickle file.
 
     :param pose_pkl: Filepath to a .pkl file containing pose data
-    :return: Map from frame identifiers to corresponding poses
+    :return: Map from frame identifiers to corresponding poses (camera w.r.t. world)
     """
     assert pose_pkl.suffix == ".pkl", f"{pose_pkl} is not a pickle (.pkl) file."
 
@@ -72,7 +65,12 @@ def load_frame_poses(pose_pkl: Path) -> dict[FrameID, Pose3D]:
     except Exception as exc:
         print(f"Error loading poses from pickle file {pose_pkl}: {exc}")
 
-    loaded_poses = {}
+    # Prepare to convert from camera-frame convention (z forward, x right, y down) to body frame
+    # Body-to-camera fixed-frame rotation: -90 deg. roll, then -90 deg. yaw
+    rot_b_c = Quaternion.from_euler_rpy(-np.pi / 2, 0.0, -np.pi / 2)
+    pose_b_c = Pose3D(Point3D(0, 0, 0), rot_b_c)
+
+    poses_w_c = {}
     for frame_key, pose_data in data.items():
         frame_id = FrameID.from_key(frame_key)
         if frame_id is None:
@@ -81,11 +79,11 @@ def load_frame_poses(pose_pkl: Path) -> dict[FrameID, Pose3D]:
 
         x, y, z = pose_data["position"]
         qw, qx, qy, qz = pose_data["quaternion(wxyz)"]
-        pose = Pose3D(Point3D(x, y, z), Quaternion(qx, qy, qz, qw))
+        pose_w_b = Pose3D(Point3D(x, y, z), Quaternion(qx, qy, qz, qw))
 
-        loaded_poses[frame_id] = pose
+        poses_w_c[frame_id] = pose_w_b @ pose_b_c
 
-    return loaded_poses
+    return poses_w_c
 
 
 def load_images(folder: Path) -> dict[FrameID, dict[str, np.ndarray]]:
@@ -130,40 +128,13 @@ def load_images(folder: Path) -> dict[FrameID, dict[str, np.ndarray]]:
                     img = Image.open(path)
                     arr = np.array(img)
 
-            except Exception as exc:
-                print(f"    Error reading {path.name}: {exc}")
+            except pickle.UnpicklingError as exc:
+                print(f"    Error unpickling {path.name}: {exc}")
             else:
                 print(f"    {image_type} -> dtype: {arr.dtype}, shape: {arr.shape}")
                 frame_groups.setdefault(frame_id, {})[image_type] = arr
 
     return frame_groups
-
-
-@dataclass(frozen=True)
-class CameraIntrinsics:
-    """Intrinsic parameters for a pinhole model camera.
-
-    Reference: https://ksimek.github.io/2013/08/13/intrinsic/
-
-    Definitions:
-        - Principal axis - Line perpendicular to the image plane through the camera pinhole.
-        - Principle point - Where the principal axis intersects with the image plane, relative
-            to the origin of the film (i.e., the pinhole's location if projected onto the film).
-
-    """
-
-    fx: float  # Focal length (pixels) in x
-    fy: float  # Focal length (pixels) in y
-    x0: float  # Principal point offset in x
-    y0: float  # Principal point offset in y
-
-    def to_list(self) -> list[float]:
-        """Convert the camera intrinsics into a list: [fx, fy, x0, y0]."""
-        return [self.fx, self.fy, self.x0, self.y0]
-
-    def to_matrix(self) -> np.ndarray:
-        """Convert the camera intrinsic parameters into a 3x3 intrinsic matrix."""
-        return np.array([[self.fx, 0.0, self.x0], [0.0, self.fy, self.y0], [0.0, 0.0, 1.0]])
 
 
 SPOT_RGB_HAND_CAMERA_INTRINSICS = CameraIntrinsics(
@@ -205,10 +176,7 @@ def create_manifest(
     fx, fy, x0, y0 = intrinsics.to_list()
     manifest = {"fl_x": fx, "fl_y": fy, "cx": x0, "cy": y0, "frames": []}
 
-    height, width, channels = rgbd_data[0].rgb.shape
-    assert width > height, "Expected images to be wider than taller."
-    assert channels == 3, f"Expected RGB images to have 3 channels; found {channels}."
-
+    height, width, _ = rgbd_data[0].rgb.shape
     manifest["w"] = width
     manifest["h"] = height
 
@@ -220,8 +188,31 @@ def create_manifest(
     for path in [output_path, rgb_dir, depth_dir]:
         path.mkdir(parents=True)
 
+    # Our data is in the robotics coordinate convention (forward-left-up; FLU) whereas
+    #   SplaTAM expects the transforms in a NeRF convention: X right, Y up, and Z backward
+    # rot_nerf_flu = np.eye(4)
+    rot_nerf_flu = np.array(
+        [
+            [0.0, -1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+
+    # rot_nerf_flu = np.array(
+    #     [
+    #         [0, -1, 0, 0],  # cam X = −Y_flu
+    #         [0, 0, -1, 0],  # cam Y = −Z_flu
+    #         [1, 0, 0, 0],  # cam Z =  X_flu
+    #         [0, 0, 0, 1],  # homogeneous
+    #     ],
+    #     dtype=float,
+    # )
+
     for frame_num, posed_rgbd in enumerate(rgbd_data):
-        rgb = posed_rgbd.rgb.reshape((height, width, 3))
+        rgb = posed_rgbd.rgb.reshape(height, width, 3)
         rgb_filepath = rgb_dir.joinpath(f"{frame_num}.png")
         cv2.imwrite(str(rgb_filepath), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
 
@@ -232,11 +223,14 @@ def create_manifest(
         depth_filepath = depth_dir.joinpath(f"{frame_num}.png")
         cv2.imwrite(str(depth_filepath), depth_uint16)
 
-        # TODO: Should this matrix be transposed or not? Probably not (looked far worse when was)
-        transform_w_c = posed_rgbd.pose.to_homogeneous_matrix()  # .view(dtype=np.float32)
+        tf_w_c_flu = posed_rgbd.pose_w_c.to_homogeneous_matrix()  # .view(dtype=np.float32)
+
+        # Now convert from the robotics frame convention to NeRF convention
+        tf_w_c_nerf = rot_nerf_flu @ tf_w_c_flu @ rot_nerf_flu.T
+        tf_c_w_nerf = np.linalg.inv(tf_w_c_nerf)
 
         frame = {
-            "transform_matrix": transform_w_c.tolist(),
+            "transform_matrix": tf_c_w_nerf.tolist(),
             "file_path": str(rgb_filepath),
             "fl_x": fx,
             "fl_y": fy,
@@ -251,47 +245,8 @@ def create_manifest(
     return manifest
 
 
-def depthmap_to_pointmap(depthmap: np.ndarray, intrinsics: CameraIntrinsics) -> np.ndarray:
-    """Convert a depthmap into a 3D pointmap in the world frame.
-
-    Reference: https://www.open3d.org/docs/release/python_api/open3d.geometry.PointCloud.html.
-        See the equations in the description of the create_from_rgbd_image() function.
-
-    :param depthmap: Depth map of shape (H, W)
-    :param intrinsics: Camera intrinsic parameters
-    :return: Array of 3D coordinates (i.e., points) corresponding to each input pixel (H, W, 3)
-    """
-    rows, cols = depthmap.shape
-    U = np.tile(np.arange(rows).reshape(rows, 1), (1, cols))  # noqa: N806
-    V = np.tile(np.arange(cols).reshape(1, cols), (rows, 1))  # noqa: N806
-    Z = depthmap  # noqa: N806
-    X = (U - intrinsics.x0) * Z / intrinsics.fx  # noqa: N806
-    Y = (V - intrinsics.y0) * Z / intrinsics.fy  # noqa: N806
-
-    return np.stack([X, Y, Z], axis=-1)  # (H, W, 3)
-
-
 def main() -> None:
     """Load RGB-D data collected on the Spot robot from file."""
-    ### DEBUGGING ###
-    depth_path = Path(
-        Path.home() / "Documents/SplaTAM/spot_room/depth_wedded-cocoon-E2.IPfP0By1xkWUdkwfVbg==-1",
-    )
-    with depth_path.open("rb") as f:
-        depthmap = pickle.load(f)
-
-    pointmap = depthmap_to_pointmap(depthmap, SPOT_RGB_HAND_CAMERA_INTRINSICS)
-
-    zero_depth_mask = depthmap > 0
-    points = pointmap[zero_depth_mask]  # Filter out zero-depth pixels
-    print(f"Points with non-zero depth: {np.count_nonzero(points)}")
-
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    o3d.visualization.draw_geometries([pcd])
-    o3d.io.write_point_cloud("output.ply", pcd)
-
-    return
     parser = argparse.ArgumentParser(description="Import robot-collected RGB-D data from file.")
     parser.add_argument("image_folder", type=Path, help="Path to the folder containing images")
     parser.add_argument("poses_pkl", type=Path, help="Path to a pickle file containing poses")
@@ -308,7 +263,7 @@ def main() -> None:
     assert poses_pkl.exists(), f"Poses pickle file {poses_pkl} does not exist."
     output_path: Path = args.output_path
 
-    frame_poses = load_frame_poses(poses_pkl)
+    frame_poses_w_c = load_frame_poses(poses_pkl)
     loaded_images = load_images(image_folder)
 
     rgbd_dataset: list[PosedRGBD] = []
@@ -317,17 +272,45 @@ def main() -> None:
             print(f"Frame {frame_id} is missing either an RGB or depth image: {images_map}")
             continue
 
-        if frame_id not in frame_poses:
+        if frame_id not in frame_poses_w_c:
             print(f"Frame {frame_id} is missing a pose!")
             continue
 
         rgb_image = images_map["color"]
         depth_image = images_map["depth"]
-        pose = frame_poses[frame_id]
+        print(f"RGB image shape: {rgb_image.shape}  Depth image shape: {depth_image.shape}")
+        pose_w_c = frame_poses_w_c[frame_id]
 
-        rgbd_dataset.append(PosedRGBD(rgb_image, depth_image, pose))
+        rgbd_dataset.append(PosedRGBD(rgb_image, depth_image, pose_w_c=pose_w_c))
 
     print(f"{len(rgbd_dataset)} RGB-D image pairs with poses have been imported from file.")
+
+    # Visualize the pointcloud resulting from the imported depth images and poses
+    list_points_w = []  # w.r.t. world frame
+    list_colors = []
+    for posed_rgbd in rgbd_dataset:
+        translation_w_c = posed_rgbd.pose_w_c.position.to_array()  # (3,)
+        rotation_w_c = posed_rgbd.pose_w_c.orientation.to_rotation_matrix()  # (3, 3)
+
+        points_c = depthmap_to_points(posed_rgbd.depth, SPOT_RGB_HAND_CAMERA_INTRINSICS)  # (N, 3)
+        points_w = (rotation_w_c @ points_c.T).T + translation_w_c  # Still (N, 3)
+
+        colors = posed_rgbd.rgb[posed_rgbd.depth > 0]  # Also (N, 3)
+
+        list_points_w.append(points_w)
+        list_colors.append(colors)
+
+    all_points_w = np.concatenate(list_points_w, axis=0)
+    all_colors = np.concatenate(list_colors, axis=0) / 255.0
+    print(np.min(all_colors), np.max(all_colors))
+    print(f"Imported {all_points_w.shape[0]} points from RGB-D images.")
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(all_points_w)
+    pcd.colors = o3d.utility.Vector3dVector(all_colors)
+    o3d.visualization.draw_geometries([pcd])
+
+    input("Press enter to output the JSON manifest for SplaTAM...")
 
     # Calculate the depth scale seemingly used by this RGB-D dataset
     min_depth_value = min(np.min(posed_rgbd.depth) for posed_rgbd in rgbd_dataset)

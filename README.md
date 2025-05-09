@@ -118,6 +118,16 @@ You can also first capture the dataset and then run SplaTAM offline on the datas
 bash bash_scripts/nerfcapture.bash configs/iphone/nerfcapture.py
 ```
 
+### Commands for Spot Data
+
+Make sure that the path at the end of the first command does not yet exist:
+
+```bash
+uv run src/import_data.py spot_room/ spot_room/pose_all_data.pkl experiments/Spot_Captures/spot_capture
+uv run scripts/splatam.py configs/spot/spot_capture.py
+uv run viz_scripts/final_recon.py configs/spot/spot_capture.py
+```
+
 ### Dataset Collection
 
 If you would like to only capture your own iPhone dataset using the NeRFCapture app, please use the following command:

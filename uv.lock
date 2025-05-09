@@ -1471,7 +1471,7 @@ requires-dist = [
     { name = "torchmetrics" },
     { name = "torchvision" },
     { name = "tqdm" },
-    { name = "transform-utils", directory = "transform-utils" },
+    { name = "transform-utils", directory = "transform_utils" },
     { name = "wandb" },
 ]
 
@@ -1620,7 +1620,7 @@ wheels = [
 [[package]]
 name = "transform-utils"
 version = "0.0.1"
-source = { directory = "transform-utils" }
+source = { directory = "transform_utils" }
 dependencies = [
     { name = "numpy" },
     { name = "pyyaml" },
