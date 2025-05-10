@@ -1,4 +1,5 @@
-"""Script to stream RGB-D data from the NeRFCapture iOS App & build a Gaussian Splat on the fly using SplaTAM.
+"""Script to stream RGB-D data from the Spot robot and build a Gaussian Splat on the fly using SplaTAM.
+
 The CycloneDDS parts of this script are adapted from the Instant-NGP Repo:
 https://github.com/NVlabs/instant-ngp/blob/master/scripts/nerfcapture2nerf.py
 """
@@ -13,6 +14,10 @@ import time
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
+from src.spot_image_client import ImageFormat
+from src.spot_manager import SpotManager
+from src.vision_utils import CameraIntrinsics, PosedRGBD
+
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, _BASE_DIR)
@@ -25,13 +30,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-from cyclonedds import idl
-from cyclonedds.core import Policy, Qos
-from cyclonedds.domain import Domain, DomainParticipant
-from cyclonedds.idl import types
-from cyclonedds.sub import DataReader
-from cyclonedds.topic import Topic
-from cyclonedds.util import duration
+
+# from cyclonedds import idl
+# from cyclonedds.core import Policy, Qos
+# from cyclonedds.domain import Domain, DomainParticipant
+# from cyclonedds.idl import types
+# from cyclonedds.sub import DataReader
+# from cyclonedds.topic import Topic
+# from cyclonedds.util import duration
 from diff_gaussian_rasterization import GaussianRasterizer as Renderer
 from tqdm import tqdm
 
@@ -60,60 +66,51 @@ def parse_args():
         type=str,
         help="Path to config file.",
     )
+
+    # Spot-specific commandline args:
+    parser.add_argument("hostname", type=str, help="IP of the Spot robot")
+    parser.add_argument("username", type=str, help="Username to authenticate with Spot")
+    parser.add_argument("password", type=str, help="Password to authenticate with Spot")
+    parser.add_argument("output_path", type=Path, help="Folder to output images into")
+    parser.add_argument("overwrite", type=bool, help="Permit overwriting the output path")
     return parser.parse_args()
 
 
 # DDS
+# # ==================================================================================================
+# @dataclass
+# @annotate.final
+# @annotate.autoid("sequential")
+# class SplatCaptureFrame(idl.IdlStruct, typename="SplatCaptureData.SplatCaptureFrame"):
+#     id: types.uint32
+#     annotate.key("id")
+#     timestamp: types.float64
+#     fl_x: types.float32
+#     fl_y: types.float32
+#     cx: types.float32
+#     cy: types.float32
+#     transform_matrix: types.array[types.float32, 16]
+#     width: types.uint32
+#     height: types.uint32
+#     image: types.sequence[types.uint8]
+#     has_depth: bool
+#     depth_width: types.uint32
+#     depth_height: types.uint32
+#     depth_scale: types.float32
+#     depth_image: types.sequence[types.uint8]
 # ==================================================================================================
-@dataclass
-@annotate.final
-@annotate.autoid("sequential")
-class SplatCaptureFrame(idl.IdlStruct, typename="SplatCaptureData.SplatCaptureFrame"):
-    id: types.uint32
-    annotate.key("id")
-    timestamp: types.float64
-    fl_x: types.float32
-    fl_y: types.float32
-    cx: types.float32
-    cy: types.float32
-    transform_matrix: types.array[types.float32, 16]
-    width: types.uint32
-    height: types.uint32
-    image: types.sequence[types.uint8]
-    has_depth: bool
-    depth_width: types.uint32
-    depth_height: types.uint32
-    depth_scale: types.float32
-    depth_image: types.sequence[types.uint8]
 
 
-dds_config = """<CycloneDDS> \
-    <Domain id="any"> \
-        <Tracing> \
-            <Verbosity>fine</Verbosity> \
-        </Tracing> \
-            <Internal> \
-            <MinimumSocketReceiveBufferSize>10MB</MinimumSocketReceiveBufferSize> \
-        </Internal> \
-        <General> \
-            <ExternalNetworkMask>255.255.255.0</ExternalNetworkMask> \
-            <AllowMulticast>true</AllowMulticast>
-            <Interfaces> \
-                <NetworkInterface name="wlp3s0" \
-                    address="10.42.0.1" \
-                    multicast="true" \
-                    autodetermine="false"  \
-                    priority="10" /> \
-            </Interfaces> \
-        </General> \
-    </Domain> \
-</CycloneDDS> \
-"""
-# ==================================================================================================
+SPOT_RGB_HAND_CAMERA_INTRINSICS = CameraIntrinsics(
+    fx=552.0291012161067,
+    fy=552.0291012161067,
+    x0=320,
+    y0=240,
+)
 
 
 def dataset_capture_loop(
-    reader: DataReader,
+    manager: SpotManager,
     save_path: Path,
     overwrite: bool,
     n_frames: int,
@@ -164,56 +161,91 @@ def dataset_capture_loop(
     mapping_frame_time_count = 0
     P = torch.tensor([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]]).float()
 
+    # Initialize variables for Spot
+    cameras = ["hand"]
+    rgbd_requests = [manager.image_client.get_rgbd_pair(cam) for cam in cameras]
+
     # Start DDS Loop
+    idx = 1
     while True:
-        sample = reader.read_next()  # Get frame from NeRFCapture
-        if sample:
+        # Get frame from Spot
+        for rgbd_req_pair in rgbd_requests:
+            responses = manager.image_client.get_images(rgbd_req_pair)
+            rgb_response = responses[0]
+            image_source = rgb_response.source.name
+            tf_w_c = manager.get_tf_a_b()
+
+            rgb_arr = manager.image_client.proto_to_np(responses[0])
+            depth_arr = manager.image_client.proto_to_np(responses[1])
+
+        # for req_type, response in zip(request_types, responses, strict=True):
+        #     camera_name, image_format = req_type
+        #     image_path = output_path / str(image_format) / f"{camera_name}-{idx}.png"
+
+        #     depth_range_mm = (
+        #         CAMERA_TO_OPERATING_RANGE_MM["hand"]
+        #         if camera_name == "hand"
+        #         else CAMERA_TO_OPERATING_RANGE_MM["body"]
+        #     )
+
+        #     manager.image_client.save_image_to_file(response, image_path, depth_range_mm)  # , None)
+
+        curr_pose = manager.get_localization()
+
+        height, width, _ = rgb.shape
+        fx, fy, cx, cy = SPOT_RGB_HAND_CAMERA_INTRINSICS.to_list()
+
+        idx += 1
+
+        # sample = reader.read_next()  # Get frame from NeRFCapture
+        if True:
             print(f"{total_frames + 1}/{n_frames} frames received")
 
             if total_frames == 0:
                 save_path.mkdir(parents=True, exist_ok=True)
                 images_dir.mkdir(exist_ok=True)
-                manifest["w"] = sample.width
-                manifest["h"] = sample.height
-                manifest["cx"] = sample.cx
-                manifest["cy"] = sample.cy
-                manifest["fl_x"] = sample.fl_x
-                manifest["fl_y"] = sample.fl_y
+                manifest["w"] = width
+                manifest["h"] = height
+                manifest["cx"] = cx
+                manifest["cy"] = cy
+                manifest["fl_x"] = fx
+                manifest["fl_y"] = fy
                 manifest["integer_depth_scale"] = float(depth_scale) / 65535.0
-                if sample.has_depth:
-                    depth_dir = save_path.joinpath("depth")
-                    depth_dir.mkdir(exist_ok=True)
+
+                depth_dir = save_path.joinpath("depth")
+                depth_dir.mkdir(exist_ok=True)
 
             # RGB
-            image = np.asarray(sample.image, dtype=np.uint8).reshape(
-                (sample.height, sample.width, 3),
-            )
+            image = rgb.reshape(height, width, 3)
             cv2.imwrite(
                 str(images_dir.joinpath(f"{total_frames}.png")),
                 cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
             )
 
-            # Depth if avaiable
+            # Depth if available
             save_depth = None
-            if sample.has_depth:
+            if True:
                 # Save Depth Image
-                save_depth = (
-                    np.asarray(sample.depth_image, dtype=np.uint8)
-                    .view(dtype=np.float32)
-                    .reshape((sample.depth_height, sample.depth_width))
-                )
-                save_depth = (save_depth * 65535 / float(depth_scale)).astype(np.uint16)
-                save_depth = cv2.resize(
-                    save_depth,
-                    dsize=(sample.width, sample.height),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-                cv2.imwrite(str(depth_dir.joinpath(f"{total_frames}.png")), save_depth)
+                depth = depth.reshape(height, width)
+                depth_uint16 = ((depth / depth_scale) * MAX_UINT16).astype(np.uint16)
+
+                # save_depth = (
+                #     np.asarray(depth, dtype=np.uint8)
+                #     .view(dtype=np.float32)
+                #     .reshape((sample.depth_height, sample.depth_width))
+                # )
+                # save_depth = (save_depth * 65535 / float(depth_scale)).astype(np.uint16)
+                # save_depth = cv2.resize(
+                #     save_depth,
+                #     dsize=(sample.width, sample.height),
+                #     interpolation=cv2.INTER_NEAREST,
+                # )
+                cv2.imwrite(str(depth_dir.joinpath(f"{total_frames}.png")), depth_uint16)
                 # Load Depth Image for SplaTAM
                 curr_depth = (
-                    np.asarray(sample.depth_image, dtype=np.uint8)
+                    np.asarray(depth, dtype=np.uint8)
                     .view(dtype=np.float32)
-                    .reshape((sample.depth_height, sample.depth_width))
+                    .reshape((height, width))
                 )
             else:
                 print(
@@ -227,12 +259,12 @@ def dataset_capture_loop(
             frame = {
                 "transform_matrix": X_WV.tolist(),
                 "file_path": f"rgb/{total_frames}.png",
-                "fl_x": sample.fl_x,
-                "fl_y": sample.fl_y,
-                "cx": sample.cx,
-                "cy": sample.cy,
-                "w": sample.width,
-                "h": sample.height,
+                "fl_x": fx,
+                "fl_y": fy,
+                "cx": cx,
+                "cy": cy,
+                "w": width,
+                "h": height,
             }
             if save_depth is not None:
                 frame["depth_path"] = f"depth/{total_frames}.png"
@@ -276,7 +308,7 @@ def dataset_capture_loop(
             if time_idx == 0:
                 intrinsics = (
                     torch.tensor(
-                        [[sample.fl_x, 0, sample.cx], [0, sample.fl_y, sample.cy], [0, 0, 1]],
+                        [[fx, 0, cx], [0, fy, cy], [0, 0, 1]],
                     )
                     .cuda()
                     .float()
@@ -316,7 +348,7 @@ def dataset_capture_loop(
             if time_idx == 0:
                 densify_intrinsics = (
                     torch.tensor(
-                        [[sample.fl_x, 0, sample.cx], [0, sample.fl_y, sample.cy], [0, 0, 1]],
+                        [[fx, 0, cx], [0, fy, cy], [0, 0, 1]],
                     )
                     .cuda()
                     .float()
@@ -762,6 +794,16 @@ def dataset_capture_loop(
 if __name__ == "__main__":
     args = parse_args()
 
+    ### Spot-specific code ###
+
+    output_path: Path = args.output_path
+    overwrite = args.overwrite
+    assert overwrite or not output_path.exists(), f"Cannot overwrite existing path: {output_path}"
+
+    manager = SpotManager("manager", args.hostname, args.username, args.password)
+
+    ###
+
     # Load SplaTAM config
     experiment = SourceFileLoader(os.path.basename(args.config), args.config).load_module()
 
@@ -769,11 +811,11 @@ if __name__ == "__main__":
     seed_everything(seed=experiment.config["seed"])
 
     # Setup DDS
-    domain = Domain(domain_id=0, config=dds_config)
-    participant = DomainParticipant()
-    qos = Qos(Policy.Reliability.Reliable(max_blocking_time=duration(seconds=1)))
-    topic = Topic(participant, "Frames", SplatCaptureFrame, qos=qos)
-    reader = DataReader(participant, topic)
+    # domain = Domain(domain_id=0, config=dds_config)
+    # participant = DomainParticipant()
+    # qos = Qos(Policy.Reliability.Reliable(max_blocking_time=duration(seconds=1)))
+    # topic = Topic(participant, "Frames", SplatCaptureFrame, qos=qos)
+    # reader = DataReader(participant, topic)
 
     # Create Results Directory and Copy Config
     results_dir = os.path.join(experiment.config["workdir"], experiment.config["run_name"])
@@ -785,7 +827,7 @@ if __name__ == "__main__":
     if "gaussian_distribution" not in config:
         config["gaussian_distribution"] = "isotropic"
     dataset_capture_loop(
-        reader,
+        manager,
         Path(config["workdir"]),
         config["overwrite"],
         config["num_frames"],

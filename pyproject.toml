@@ -34,6 +34,7 @@ dependencies = [
     "faiss-gpu",
     "diff-gaussian-rasterization-w-depth @ file:///${PROJECT_ROOT}/diff-gaussian-rasterization-w-depth",
     "transform-utils @ file:///${PROJECT_ROOT}/transform_utils",
+    "bosdyn-client",
 ]
 
 [dependency-groups]
@@ -75,12 +76,12 @@ quote-style = "double"
 indent-style = "space"
 
 
-[tool.mypy]
-strict = true                   # Enable all optional error checking flags
-disallow_incomplete_defs = true # Allow entirely type-unannotated functions
-disallow_any_unimported = true
-implicit_optional = false
-check_untyped_defs = true       # Type-check interior of unannotated functions
-warn_return_any = true
-show_error_code_links = true    # Include documentation links for errors
-warn_unused_configs = true      # Warn if per-module mypy settings go unused
+# [tool.mypy]
+# strict = true                   # Enable all optional error checking flags
+# disallow_incomplete_defs = true # Allow entirely type-unannotated functions
+# disallow_any_unimported = true
+# implicit_optional = false
+# check_untyped_defs = true       # Type-check interior of unannotated functions
+# warn_return_any = true
+# show_error_code_links = true    # Include documentation links for errors
+# warn_unused_configs = true      # Warn if per-module mypy settings go unused

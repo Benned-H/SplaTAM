@@ -19,122 +19,91 @@ from transform_utils.kinematics import Point3D, Pose3D, Quaternion
 
 
 @dataclass(frozen=True)
-class FrameID:
-    """An identifier for a frame based on its waypoint and index for that waypoint."""
+class CameraFrame:
+    """Represents the pose of a camera at a particular frame in a trajectory."""
 
-    waypoint_id: str
-    frame_idx: int  # Index of the frame for the waypoint (0 through 3)
-
-    @classmethod
-    def from_key(cls, key: str) -> FrameID | None:
-        """Construct a FrameID based on a frame's string key.
-
-        :param key: String identifying the frame (of form WAYPOINT_ID==-IDX)
-        :return: Constructed FrameID instance, or None if invalid key format
-        """
-        parts = str(key).split("==-")
-        if len(parts) != 2:
-            print(f"Unexpected frame key format: {key}")
-            return None
-
-        return FrameID(parts[0], int(parts[1]))
+    frame_idx: int  # Index of the frame in the overall sequence
+    camera: str  # Name of the camera
+    pose_w_c: Pose3D  # Pose of the camera during the frame (camera w.r.t. world)
 
 
-@dataclass(frozen=True)
-class PosedImage:
-    """An image taken at a known camera pose."""
+def load_camera_frames(poses_folder: Path) -> dict[tuple[int, str], CameraFrame]:
+    """Load per-camera and per-frame pose data from the given folder.
 
-    image: np.ndarray
-    pose: Pose3D
-
-
-def load_frame_poses(pose_pkl: Path) -> dict[FrameID, Pose3D]:
-    """Load per-frame pose data from the given pickle file.
-
-    :param pose_pkl: Filepath to a .pkl file containing pose data
-    :return: Map from frame identifiers to corresponding poses (camera w.r.t. world)
+    :param poses_folder: Path to a folder containing pickled poses
+    :return: Map from (frame index, camera name) tuples to CameraFrame data structures
     """
-    assert pose_pkl.suffix == ".pkl", f"{pose_pkl} is not a pickle (.pkl) file."
+    assert poses_folder.exists(), f"Cannot import poses from nonexistent folder: {poses_folder}"
+    assert poses_folder.is_dir(), f"{poses_folder} is not a directory."
 
-    try:
-        with pose_pkl.open("rb") as f:
-            data = pickle.load(f)
-        if not isinstance(data, dict):
-            raise TypeError(f"Pose pickle data was {type(data)}, not a dictionary.")
-
-    except Exception as exc:
-        print(f"Error loading poses from pickle file {pose_pkl}: {exc}")
-
-    # Prepare to convert from camera-frame convention (z forward, x right, y down) to body frame
-    # Body-to-camera fixed-frame rotation: -90 deg. roll, then -90 deg. yaw
-    rot_b_c = Quaternion.from_euler_rpy(-np.pi / 2, 0.0, -np.pi / 2)
-    pose_b_c = Pose3D(Point3D(0, 0, 0), rot_b_c)
-
-    poses_w_c = {}
-    for frame_key, pose_data in data.items():
-        frame_id = FrameID.from_key(frame_key)
-        if frame_id is None:
-            print(f"Could not parse frame key: {frame_key}")
+    output_map: dict[tuple[int, str], CameraFrame] = {}
+    for pose_pkl in poses_folder.iterdir():
+        if pose_pkl.suffix != ".pkl":
             continue
 
-        x, y, z = pose_data["position"]
-        qw, qx, qy, qz = pose_data["quaternion(wxyz)"]
-        pose_w_b = Pose3D(Point3D(x, y, z), Quaternion(qx, qy, qz, qw))
+        pieces = pose_pkl.stem.split("-")
+        if len(pieces) != 2:
+            print(f"Could not parse pickled pose filename: {pose_pkl}")
+            continue
+        camera_name, frame_idx = pieces
 
-        poses_w_c[frame_id] = pose_w_b @ pose_b_c
+        try:
+            with pose_pkl.open("rb") as f:
+                data = pickle.load(f)
 
-    return poses_w_c
+            if not isinstance(data, Pose3D):
+                raise TypeError(f"Imported pose had type {type(data)}, not Pose3D.")
+
+            output_map[(frame_idx, camera_name)] = CameraFrame(frame_idx, camera_name, data)
+        except Exception as exc:
+            print(f"Error loading pose from pickle file {pose_pkl}: {exc}")
+
+    return output_map
 
 
-def load_images(folder: Path) -> dict[FrameID, dict[str, np.ndarray]]:
+@dataclass
+class RGBDPair:
+    """A paired RGB image and depth image taken at the same time on the same camera."""
+
+    frame_idx: int  # Index of the frame in the overall sequence
+    camera: str  # Name of the camera used to take the images
+    rgb: np.array  # RGB image
+    depth: np.array  # Depth image
+
+
+def load_images(folder: Path) -> dict[tuple[int, str], RGBDPair]:
     """Load RGB-D images from the given folder.
 
     :param folder: Folder containing RGB-D images collected on the robot
-    :return: Map from frame IDs to maps from image types (as strings) to corresponding images
+    :return: Map from (frame index, camera name) tuples to RGB-D image pairs
     """
-    prefixes = ("color", "combined", "depth")
+    rgb_folder = folder / "ImageFormat.RGB"
+    depth_folder = folder / "ImageFormat.DEPTH"
 
-    prefixed_files = [fp for fp in folder.iterdir() if any(fp.name.startswith(p) for p in prefixes)]
-    if not prefixed_files:
-        raise RuntimeError(f"Didn't find any images in folder {folder} with prefixes {prefixes}!")
+    rgb_count = sum(1 for i in rgb_folder.iterdir() if i.is_file())
+    depth_count = sum(1 for i in depth_folder.iterdir() if i.is_file())
+    assert rgb_count == depth_count, f"Found {rgb_count} RGB images but {depth_count} depth images."
 
-    frame_groups_paths: dict[FrameID, dict[str, Path]] = {}
-    for filepath in prefixed_files:
-        filename = filepath.name
-        filename = filename.removesuffix(".jpg")
+    loaded_images: dict[tuple[int, str], RGBDPair] = {}
+    for rgb_filepath in rgb_folder.iterdir():
+        depth_filepath = depth_folder / rgb_filepath.name
+        assert depth_filepath.exists(), f"Expected to find file named: {depth_filepath}"
 
-        for prefix in prefixes:
-            if str(filename).startswith(prefix):
-                frame_key = filename[len(prefix) + 1 :]
-                frame_id = FrameID.from_key(frame_key)
-                if frame_id is None:
-                    print(f"Could not parse frame key: {frame_key}")
-                    continue
+        pieces = rgb_filepath.stem.split("-")
+        if len(pieces) != 2:
+            print(f"Could not parse RGB image filename: {rgb_filepath}")
+            continue
+        camera_name, frame_idx = pieces
 
-                frame_groups_paths.setdefault(frame_id, {})[prefix] = filepath
-                break
+        rgb_image = Image.open(rgb_filepath)
+        rgb_arr = np.array(rgb_image)
+        depth_image = Image.open(depth_filepath)
+        depth_arr = np.array(depth_image)
 
-    frame_groups: dict[FrameID, dict[str, np.ndarray]] = {}
-    for frame_id, image_paths_map in frame_groups_paths.items():
-        print(f"Loading images for frame {frame_id.frame_idx} of waypoint {frame_id.waypoint_id}:")
-        for image_type, path in image_paths_map.items():
-            try:
-                # Load depth images as pickled NumPy arrays
-                if image_type == "depth":
-                    with path.open("rb") as f:
-                        arr = pickle.load(f)
+        rgbd_pair = RGBDPair(frame_idx, camera_name, rgb_arr, depth_arr)
+        loaded_images[(frame_idx, camera_name)] = rgbd_pair
 
-                else:  # Load RGB and 'combined' images as images
-                    img = Image.open(path)
-                    arr = np.array(img)
-
-            except pickle.UnpicklingError as exc:
-                print(f"    Error unpickling {path.name}: {exc}")
-            else:
-                print(f"    {image_type} -> dtype: {arr.dtype}, shape: {arr.shape}")
-                frame_groups.setdefault(frame_id, {})[image_type] = arr
-
-    return frame_groups
+    return loaded_images
 
 
 SPOT_RGB_HAND_CAMERA_INTRINSICS = CameraIntrinsics(
@@ -219,8 +188,7 @@ def create_manifest(
 def main() -> None:
     """Load RGB-D data collected on the Spot robot from file."""
     parser = argparse.ArgumentParser(description="Import robot-collected RGB-D data from file.")
-    parser.add_argument("image_folder", type=Path, help="Path to the folder containing images")
-    parser.add_argument("poses_pkl", type=Path, help="Path to a pickle file containing poses")
+    parser.add_argument("input_path", type=Path, help="Path to the folder containing data")
     parser.add_argument(
         "output_path",
         type=Path,
@@ -228,31 +196,23 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    image_folder: Path = args.image_folder
-    assert image_folder.exists(), f"Folder {image_folder} does not exist."
-    poses_pkl: Path = args.poses_pkl
-    assert poses_pkl.exists(), f"Poses pickle file {poses_pkl} does not exist."
+    input_path: Path = args.input_path
+    assert input_path.exists(), f"Folder {input_path} does not exist."
     output_path: Path = args.output_path
 
-    frame_poses_w_c = load_frame_poses(poses_pkl)
-    loaded_images = load_images(image_folder)
+    camera_frames = load_camera_frames(input_path / "poses")
+    images = load_images(input_path / "images")
 
     rgbd_dataset: list[PosedRGBD] = []
-    for frame_id, images_map in loaded_images.items():
-        if not {"color", "depth"}.issubset(images_map.keys()):
-            print(f"Frame {frame_id} is missing either an RGB or depth image: {images_map}")
+    for idx_tuple, frame_data in camera_frames.items():
+        if idx_tuple not in images:
+            print(f"Frame {idx_tuple[0]} for camera {idx_tuple[1]} doesn't have an RGB-D pair!")
             continue
 
-        if frame_id not in frame_poses_w_c:
-            print(f"Frame {frame_id} is missing a pose!")
-            continue
+        rgbd = images[idx_tuple]
+        print(f"RGB image shape: {rgbd.rgb.shape}   Depth image shape: {rgbd.depth.shape}")
 
-        rgb_image = images_map["color"]
-        depth_image = images_map["depth"]
-        print(f"RGB image shape: {rgb_image.shape}  Depth image shape: {depth_image.shape}")
-        pose_w_c = frame_poses_w_c[frame_id]
-
-        rgbd_dataset.append(PosedRGBD(rgb_image, depth_image, pose_w_c=pose_w_c))
+        rgbd_dataset.append(PosedRGBD(rgbd.rgb, rgbd.depth, frame_data.pose_w_c))
 
     print(f"{len(rgbd_dataset)} RGB-D image pairs with poses have been imported from file.")
 
@@ -260,6 +220,7 @@ def main() -> None:
     list_points_w = []  # w.r.t. world frame
     list_colors = []
     for posed_rgbd in rgbd_dataset:
+        print(posed_rgbd.pose_w_c)
         translation_w_c = posed_rgbd.pose_w_c.position.to_array()  # (3,)
         rotation_w_c = posed_rgbd.pose_w_c.orientation.to_rotation_matrix()  # (3, 3)
 
@@ -278,7 +239,7 @@ def main() -> None:
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(all_points_w)
-    pcd.colors = o3d.utility.Vector3dVector(all_colors)
+    # pcd.colors = o3d.utility.Vector3dVector(all_colors)
     o3d.visualization.draw_geometries([pcd])
 
     input("Press enter to output the JSON manifest for SplaTAM...")
