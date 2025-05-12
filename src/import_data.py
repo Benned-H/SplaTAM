@@ -14,6 +14,7 @@ import numpy as np
 import open3d as o3d
 from PIL import Image
 
+from src.colmap_capture import export_record3d_folder
 from src.vision_utils import CameraIntrinsics, PosedRGBD, depthmap_to_points
 from transform_utils.kinematics import Point3D, Pose3D, Quaternion
 
@@ -279,23 +280,32 @@ def main() -> None:
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(all_points_w)
     pcd.colors = o3d.utility.Vector3dVector(all_colors)
-    o3d.visualization.draw_geometries([pcd])
+    # o3d.visualization.draw_geometries([pcd])
+    o3d.io.write_point_cloud("output.ply", pcd)
 
-    input("Press enter to output the JSON manifest for SplaTAM...")
+    # import open3d as o3d
+    # pcd = o3d.geometry.PointCloud()
+    # # Add points to the point cloud (example)
+    # # pcd.points = o3d.utility.Vector3dVector(your_points_array)
+    # o3d.io.write_point_cloud("output.ply", pcd)
 
-    # Calculate the depth scale seemingly used by this RGB-D dataset
-    min_depth_value = min(np.min(posed_rgbd.depth) for posed_rgbd in rgbd_dataset)
-    max_depth_value = max(np.max(posed_rgbd.depth) for posed_rgbd in rgbd_dataset)
-    print(f"Minimum observed depth value: {min_depth_value}")
-    print(f"Maximum observed depth value: {max_depth_value}")
-    depth_scale = 10.0  # Reasonable maximum value (m) for depth data from Spot's hand camera
+    input("Press enter to output data into the Record3D format...")
 
-    manifest = create_manifest(rgbd_dataset, load_camera_intrinsics(), output_path, depth_scale)
+    export_record3d_folder(rgbd_dataset, SPOT_RGB_HAND_CAMERA_INTRINSICS, output_path)
 
-    # Write the manifest to JSON
-    manifest_json = json.dumps(manifest, indent=4)
-    with output_path.joinpath("transforms.json").open("w") as f:
-        f.write(manifest_json)
+    # # Calculate the depth scale seemingly used by this RGB-D dataset
+    # min_depth_value = min(np.min(posed_rgbd.depth) for posed_rgbd in rgbd_dataset)
+    # max_depth_value = max(np.max(posed_rgbd.depth) for posed_rgbd in rgbd_dataset)
+    # print(f"Minimum observed depth value: {min_depth_value}")
+    # print(f"Maximum observed depth value: {max_depth_value}")
+    # depth_scale = 10.0  # Reasonable maximum value (m) for depth data from Spot's hand camera
+
+    # manifest = create_manifest(rgbd_dataset, load_camera_intrinsics(), output_path, depth_scale)
+
+    # # Write the manifest to JSON
+    # manifest_json = json.dumps(manifest, indent=4)
+    # with output_path.joinpath("transforms.json").open("w") as f:
+    #     f.write(manifest_json)
 
 
 if __name__ == "__main__":

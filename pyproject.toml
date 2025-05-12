@@ -37,6 +37,7 @@ dependencies = [
     "bosdyn-client",
 ]
 
+
 [dependency-groups]
 lint = ["ruff"]
 tests = ["pytest", "coverage", "hypothesis"]
